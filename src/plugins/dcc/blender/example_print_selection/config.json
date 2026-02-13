@@ -1,0 +1,27 @@
+
+{
+  "plugin": {
+    "name": "[示例] Blender打印选择",
+    "version": "1.0.0",
+    "type": "dcc",
+    "target_dcc": "blender",
+    "min_version": "2.80",
+    "max_version": "4.0",
+    "description": "获取Blender中选择的对象并打印其名称 - 示例脚本",
+    "author": "DCC Tool Framework Team",
+    "entry_point": "plugin.py"
+  },
+  "dependencies": {
+    "required": ["bpy"],
+    "optional": []
+  },
+  "capabilities": [
+    "获取当前选择",
+    "打印对象名称"
+  ],
+  "parameters": {},
+  "usage": {
+    "basic": "在Blender中选择对象后运行此脚本",
+    "advanced": "可在Blender脚本编辑器中直接执行"
+  }
+}

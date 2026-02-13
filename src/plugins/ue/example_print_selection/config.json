@@ -1,0 +1,27 @@
+
+{
+  "plugin": {
+    "name": "[示例] UE打印选择",
+    "version": "1.0.0",
+    "type": "ue_engine",
+    "target_dcc": "unreal",
+    "min_version": "5.0",
+    "max_version": "5.4",
+    "description": "获取Unreal Engine中选择的资产并打印其名称 - 示例脚本",
+    "author": "DCC Tool Framework Team",
+    "entry_point": "plugin.py"
+  },
+  "dependencies": {
+    "required": ["unreal"],
+    "optional": []
+  },
+  "capabilities": [
+    "获取当前选择",
+    "打印资产名称"
+  ],
+  "parameters": {},
+  "usage": {
+    "basic": "在UE编辑器中选择资产后运行此脚本",
+    "advanced": "可通过Python编辑器执行"
+  }
+}

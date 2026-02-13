@@ -1,0 +1,27 @@
+
+{
+  "plugin": {
+    "name": "[示例] Max打印选择",
+    "version": "1.0.0",
+    "type": "dcc",
+    "target_dcc": "3ds_max",
+    "min_version": "2020",
+    "max_version": "2025",
+    "description": "获取3ds Max中选择的对象并打印其名称 - 示例脚本",
+    "author": "DCC Tool Framework Team",
+    "entry_point": "plugin.py"
+  },
+  "dependencies": {
+    "required": ["pymxs"],
+    "optional": []
+  },
+  "capabilities": [
+    "获取当前选择",
+    "打印对象名称"
+  ],
+  "parameters": {},
+  "usage": {
+    "basic": "在3ds Max中选择对象后运行此脚本",
+    "advanced": "可在3ds Max脚本编辑器中直接执行"
+  }
+}
