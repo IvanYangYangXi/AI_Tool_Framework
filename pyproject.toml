@@ -1,0 +1,37 @@
+name = "dcc-ue-tool-framework"
+version = "0.1.0"
+description = "DCC工具和UE引擎工具管理框架"
+authors = ["Your Name <your.email@example.com>"]
+license = "MIT"
+readme = "README.md"
+python = "^3.8"
+
+[tool.poetry.dependencies]
+python = "^3.8"
+pyyaml = "^6.0"
+importlib-metadata = "^6.0"
+setuptools = "^67.0"
+click = "^8.1"
+colorama = "^0.4.6"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^7.2"
+pytest-cov = "^4.0"
+black = "^23.1"
+flake8 = "^6.0"
+mypy = "^1.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.black]
+line-length = 88
+target-version = ['py38']
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --cov=src --cov-report=html --cov-report=term-missing"

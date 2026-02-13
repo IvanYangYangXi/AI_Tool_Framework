@@ -1,0 +1,17 @@
+# Core dependencies
+pyyaml>=6.0
+jsonschema>=4.0
+pyjwt>=2.0
+
+# Development dependencies
+pytest>=7.0
+pytest-cov>=4.0
+
+# Optional dependencies for advanced features
+# spaCy for NLP processing (optional)
+# spacy>=3.0
+
+# For code quality
+# black>=23.0
+# flake8>=6.0
+# mypy>=1.0
