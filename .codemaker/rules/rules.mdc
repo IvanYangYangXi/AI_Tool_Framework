@@ -1,0 +1,864 @@
+---
+description: AI coding guidance and rules for this repository.
+alwaysApply: true
+---
+<rule>
+# DCC工具和UE引擎工具管理框架 - AI编程指南
+
+## 1. 高级架构概述
+
+### 1.1 项目定位
+这是一个统一的DCC（Maya、3ds Max、Blender等）和Unreal Engine工具插件管理框架，支持：
+- 插件生命周期管理（发现、加载、卸载、执行）
+- AI驱动的工具自动生成（自然语言 -> SDD配置 -> 代码）
+- 智能需求分析和引导
+- 沙箱安全执行环境
+- 基于角色的权限控制（RBAC）
+
+### 1.2 目录结构
+```
+AI_Tool_Framework/
+├── src/
+│   ├── main.py                    # 应用主入口
+│   ├── core/                      # 核心框架模块
+│   │   ├── plugin_manager.py      # 插件生命周期管理
+│   │   ├── dynamic_loader.py      # 安全动态加载引擎
+│   │   ├── config_manager.py      # SDD配置解析与验证
+│   │   ├── permission_system.py   # RBAC权限控制
+│   │   ├── dcc_plugin_interface.py  # DCC插件标准接口
+│   │   └── ue_plugin_interface.py   # UE插件标准接口
+│   ├── ai_nlp/                    # AI/NLP模块
+│   │   ├── tool_generator.py      # AI工具生成器
+│   │   ├── model_interface.py     # 多AI提供商接口
+│   │   └── sdd_processor.py       # SDD文档处理器
+│   ├── requirement_analysis/      # 需求分析模块
+│   │   ├── requirement_analyzer.py # 需求质量分析器
+│   │   └── guidance_system.py     # 交互式引导系统
+│   ├── gui/                       # GUI界面
+│   └── plugins/                   # 插件目录
+│       ├── dcc/                   # DCC工具插件
+│       │   ├── maya/
+│       │   ├── blender/
+│       │   └── max/
+│       └── ue_engine/             # UE引擎插件
+├── tests/                         # 测试用例
+├── configs/                       # 配置文件
+└── docs/                          # 文档
+```
+
+### 1.3 主入口与执行流程
+```
+src/main.py::main()
+  ├── setup_logging()              # 初始化日志
+  ├── demo_basic_usage()           # 基础功能演示
+  │   ├── PluginManager(plugin_dirs)  # 初始化插件管理器
+  │   ├── DynamicLoader(sandbox_enabled)  # 初始化动态加载器
+  │   ├── ConfigManager(config_dirs)  # 初始化配置管理器
+  │   ├── PermissionSystem()       # 初始化权限系统
+  │   └── [插件发现 -> 加载 -> 执行]
+  ├── demo_ai_tool_generation()    # AI工具生成演示
+  └── demo_intelligent_requirement_analysis()  # 需求分析演示
+```
+
+---
+
+## 2. 代码风格与一致性
+
+### 2.1 命名规范
+
+#### 类命名 (PascalCase)
+```python
+# ✅ 正确
+class PluginManager:
+class AIToolGenerator:
+class MayaMeshCleaner:
+class DCCPluginInterface:
+
+# ❌ 错误
+class plugin_manager:
+class ai_tool_generator:
+```
+
+#### 函数和方法命名 (snake_case)
+```python
+# ✅ 正确
+def discover_plugins(self) -> List[PluginInfo]:
+def load_module_safely(self, module_path: str) -> Optional[Any]:
+def _setup_logging(self):  # 私有方法以下划线开头
+def _extract_plugin_info(self, plugin_file: Path) -> Optional[PluginInfo]:
+
+# ❌ 错误
+def DiscoverPlugins():
+def loadModuleSafely():
+```
+
+#### 变量命名 (snake_case)
+```python
+# ✅ 正确
+plugin_manager = PluginManager()
+discovered_plugins = []
+is_valid = True
+output_path = "./output"
+
+# ❌ 错误
+pluginManager = PluginManager()
+discoveredPlugins = []
+IsValid = True
+```
+
+#### 常量命名 (UPPER_SNAKE_CASE)
+```python
+# ✅ 正确 - 模块级常量
+PLUGIN_NAME = "MeshCleaner"
+PLUGIN_VERSION = "1.0.0"
+PLUGIN_TYPE = "dcc"
+PLUGIN_DESCRIPTION = "网格清理工具"
+PLUGIN_AUTHOR = "Developer"
+```
+
+#### 枚举命名
+```python
+# ✅ 正确 - 枚举类使用PascalCase，成员使用UPPER_SNAKE_CASE
+class PluginType(Enum):
+    DCC = "dcc"
+    UE_ENGINE = "ue_engine"
+    UTILITY = "utility"
+
+class PermissionLevel(Enum):
+    NONE = "none"
+    READ = "read"
+    WRITE = "write"
+    EXECUTE = "execute"
+    ADMIN = "admin"
+```
+
+### 2.2 文件头部标准
+每个Python文件必须以三引号文档字符串开头：
+```python
+"""
+模块简要描述 - 一句话说明模块职责
+
+详细描述（可选）
+"""
+
+import logging
+from typing import Dict, List, Optional, Any
+from dataclasses import dataclass
+from enum import Enum
+# ... 其他导入
+```
+
+### 2.3 导入顺序
+```python
+# 1. 标准库
+import os
+import sys
+import logging
+import json
+from typing import Dict, List, Optional, Any, Callable
+from pathlib import Path
+from dataclasses import dataclass, field
+from enum import Enum
+from abc import ABC, abstractmethod
+
+# 2. 第三方库
+import yaml
+import jsonschema
+import jwt
+
+# 3. 本地导入 (使用相对导入)
+from ..core.config_manager import ConfigManager
+from .model_interface import ModelInterface
+```
+
+### 2.4 类型注解要求
+**所有公共方法必须有完整的类型注解：**
+```python
+def discover_plugins(self) -> List[PluginInfo]:
+    """发现所有可用插件"""
+    pass
+
+def load_plugin(self, plugin_name: str) -> bool:
+    """加载指定插件"""
+    pass
+
+def execute_function_safely(self, func: Callable, *args, **kwargs) -> Any:
+    """安全执行函数"""
+    pass
+```
+
+### 2.5 文档字符串规范
+```python
+def execute(self, **kwargs) -> Dict[str, Any]:
+    """
+    执行插件主功能
+    
+    Args:
+        tolerance: 顶点合并容差
+        delete_duplicates: 是否删除重复顶点
+        merge_vertices: 是否合并接近顶点
+        output_path: 输出文件路径
+        
+    Returns:
+        执行结果字典，包含:
+        - status: "success" | "error"
+        - result: 执行结果数据
+        - message: 错误信息（如有）
+    """
+    pass
+```
+
+---
+
+## 3. 快速参考与上下文映射
+
+### 3.1 核心工具类与签名
+
+#### PluginManager (src/core/plugin_manager.py)
+```python
+class PluginManager:
+    def __init__(self, plugin_dirs: List[str] = None):
+    def discover_plugins(self) -> List[PluginInfo]:
+    def load_plugin(self, plugin_name: str) -> bool:
+    def unload_plugin(self, plugin_name: str) -> bool:
+    def get_plugin(self, plugin_name: str) -> Optional[Any]:
+    def list_plugins(self, plugin_type: Optional[PluginType] = None) -> List[PluginInfo]:
+    def get_loaded_plugins(self) -> Dict[str, Any]:
+```
+
+#### DynamicLoader (src/core/dynamic_loader.py)
+```python
+class DynamicLoader:
+    def __init__(self, sandbox_enabled: bool = True):
+    def load_module_safely(self, module_path: str, module_name: str = None) -> Optional[Any]:
+    def execute_function_safely(self, func: Callable, *args, **kwargs) -> Any:
+    def unload_module(self, module_name: str) -> bool:
+    def get_loaded_modules(self) -> Dict[str, Any]:
+    def verify_module_signature(self, module_path: str) -> bool:
+    def cleanup_resources(self):
+```
+
+#### ConfigManager (src/core/config_manager.py)
+```python
+class ConfigManager:
+    def __init__(self, config_dirs: List[str] = None):
+    def parse_sdd_config(self, config_path: str) -> Optional[ToolConfig]:
+    def generate_config_from_template(self, template_name: str, variables: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    def save_config(self, config: ToolConfig, output_path: str):
+```
+
+#### PermissionSystem (src/core/permission_system.py)
+```python
+class PermissionSystem:
+    def __init__(self, secret_key: str = None, config_path: str = "./configs/security.json"):
+    def authenticate_user(self, username: str, password: str = None) -> Optional[str]:
+    def verify_token(self, token: str) -> Optional[Dict[str, Any]]:
+    def check_permission(self, username: str, resource_type: ResourceType, required_level: PermissionLevel) -> bool:
+    def get_user_permissions(self, username: str) -> Dict[ResourceType, PermissionLevel]:
+    def add_user(self, username: str, roles: List[str] = None, active: bool = True) -> bool:
+    def get_audit_log(self, limit: int = 100) -> List[Dict[str, Any]]:
+```
+
+#### AIToolGenerator (src/ai_nlp/tool_generator.py)
+```python
+class AIToolGenerator:
+    def __init__(self, model_provider: str = "openai", api_key: str = None):
+    def generate_tool_from_description(self, description: str, output_dir: str = "./generated_tools") -> GenerationResult:
+```
+
+#### RequirementAnalyzer (src/requirement_analysis/requirement_analyzer.py)
+```python
+class RequirementAnalyzer:
+    def __init__(self, ai_provider: str = "openai", api_key: str = None):
+    def analyze_requirement(self, description: str) -> RequirementAnalysis:
+```
+
+### 3.2 关键枚举类型
+
+```python
+# src/core/plugin_manager.py
+class PluginType(Enum):
+    DCC = "dcc"
+    UE_ENGINE = "ue_engine"
+    UTILITY = "utility"
+
+class PluginStatus(Enum):
+    LOADED = "loaded"
+    UNLOADED = "unloaded"
+    ERROR = "error"
+    DISABLED = "disabled"
+
+# src/core/permission_system.py
+class PermissionLevel(Enum):
+    NONE = "none"
+    READ = "read"
+    WRITE = "write"
+    EXECUTE = "execute"
+    ADMIN = "admin"
+
+class ResourceType(Enum):
+    PLUGIN = "plugin"
+    CONFIG = "config"
+    FILE = "file"
+    NETWORK = "network"
+
+# src/core/dcc_plugin_interface.py
+class DCCSoftware(Enum):
+    MAYA = "maya"
+    MAX = "3ds_max"
+    BLENDER = "blender"
+    HOUDINI = "houdini"
+    CINEMA4D = "cinema4d"
+    NUKE = "nuke"
+
+# src/core/config_manager.py
+class ToolType(Enum):
+    DCC = "dcc"
+    UE_ENGINE = "ue_engine"
+    UTILITY = "utility"
+
+# src/requirement_analysis/requirement_analyzer.py
+class RequirementQuality(Enum):
+    EXCELLENT = "excellent"
+    GOOD = "good"
+    FAIR = "fair"
+    POOR = "poor"
+```
+
+### 3.3 关键数据类
+
+```python
+# src/core/plugin_manager.py
+@dataclass
+class PluginInfo:
+    name: str
+    version: str
+    plugin_type: PluginType
+    description: str
+    author: str
+    file_path: str
+    module_name: str
+    status: PluginStatus = PluginStatus.UNLOADED
+    dependencies: List[str] = field(default_factory=list)
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+# src/core/dynamic_loader.py
+@dataclass
+class ResourceLimits:
+    memory_limit_mb: int = 512
+    cpu_time_limit_sec: int = 30
+    timeout_sec: int = 60
+
+# src/ai_nlp/tool_generator.py
+@dataclass
+class GenerationResult:
+    success: bool
+    tool_name: str
+    generated_files: List[str]
+    config_file: str
+    validation_results: Dict[str, Any]
+    ai_prompt_used: str
+    execution_instructions: str
+```
+
+### 3.4 插件常量定义模式
+每个插件文件(plugin.py)必须定义以下常量：
+```python
+PLUGIN_NAME = "MeshCleaner"
+PLUGIN_VERSION = "1.0.0"
+PLUGIN_TYPE = "dcc"  # 或 "ue_engine", "utility"
+PLUGIN_DESCRIPTION = "插件功能描述"
+PLUGIN_AUTHOR = "作者名"
+```
+
+---
+
+## 4. 游戏开发特定模式
+
+### 4.1 插件接口实现模式
+
+#### DCC插件标准模式
+```python
+from src.core.dcc_plugin_interface import (
+    DCCPluginInterface,
+    MayaPluginMixin,  # 或 BlenderPluginMixin, MaxPluginMixin
+    dcc_plugin,
+    validate_params,
+    auto_register,
+    DCCSoftware
+)
+
+@dcc_plugin(
+    name="PluginName",
+    version="1.0.0",
+    dcc=DCCSoftware.MAYA,
+    min_version="2022",
+    max_version="2025"
+)
+@auto_register
+class PluginName(DCCPluginInterface, MayaPluginMixin):
+    """插件描述"""
+    
+    PLUGIN_DESCRIPTION = "详细描述"
+    PLUGIN_AUTHOR = "作者"
+    
+    def __init__(self):
+        self._connected = False
+        self._setup_logging()
+    
+    def connect_to_dcc(self) -> bool:
+        """连接到DCC软件"""
+        try:
+            import maya.cmds as cmds
+            self._connected = True
+            return True
+        except ImportError:
+            return False
+    
+    def disconnect_from_dcc(self):
+        """断开连接"""
+        self._connected = False
+    
+    @validate_params(
+        param1={'type': float, 'min': 0.0, 'max': 1.0, 'default': 0.5, 'required': False},
+        param2={'type': bool, 'default': True, 'required': False}
+    )
+    def execute(self, **kwargs) -> Dict[str, Any]:
+        """执行主功能"""
+        try:
+            if not self._connected and not self.connect_to_dcc():
+                return {"status": "error", "message": "无法连接到DCC"}
+            
+            # 执行逻辑...
+            
+            return {"status": "success", "result": result_data}
+        except Exception as e:
+            return {"status": "error", "message": str(e)}
+    
+    def validate_parameters(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        return params
+    
+    def get_info(self) -> Dict[str, Any]:
+        return {
+            "name": self.PLUGIN_NAME,
+            "version": self.PLUGIN_VERSION,
+            "type": self.PLUGIN_TYPE,
+            "description": self.PLUGIN_DESCRIPTION
+        }
+    
+    def get_selection(self) -> List[str]:
+        return self.maya_eval("ls(selection=True)") or []
+    
+    def get_scene_objects(self) -> List[Dict[str, Any]]:
+        return []
+```
+
+### 4.2 安全执行模式
+
+```python
+# 使用沙箱环境执行插件
+dynamic_loader = DynamicLoader(sandbox_enabled=True)
+
+# 安全执行函数（带超时）
+result = dynamic_loader.execute_function_safely(
+    plugin_module.execute,
+    output_path="./output/result.txt",
+    _timeout=30  # 30秒超时
+)
+```
+
+### 4.3 权限检查模式
+
+```python
+# 检查用户权限后再执行插件
+if permission_system.check_permission(
+    username="admin",
+    resource_type=ResourceType.PLUGIN,
+    permission_level=PermissionLevel.EXECUTE
+):
+    result = plugin_module.execute(**params)
+else:
+    raise PermissionError("权限不足")
+```
+
+### 4.4 错误处理标准模式
+
+#### 返回结果格式
+```python
+# 成功响应
+return {
+    "status": "success",
+    "tool": self.PLUGIN_NAME,
+    "version": self.PLUGIN_VERSION,
+    "result": result_data,
+    "parameters_used": validated_params
+}
+
+# 错误响应
+return {
+    "status": "error",
+    "tool": self.PLUGIN_NAME,
+    "message": str(e),
+    "error_type": type(e).__name__
+}
+```
+
+#### Try-Except模式
+```python
+def execute(self, **kwargs) -> Dict[str, Any]:
+    try:
+        # 1. 连接检查
+        if not self._connected and not self.connect_to_dcc():
+            return {"status": "error", "message": "连接失败"}
+        
+        # 2. 参数验证
+        validated_params = self.validate_parameters(kwargs)
+        
+        # 3. 核心逻辑
+        result = self._process(validated_params)
+        
+        # 4. 返回成功
+        return {"status": "success", "result": result}
+        
+    except ValueError as e:
+        logger.error(f"参数错误: {e}")
+        return {"status": "error", "message": f"参数错误: {e}"}
+    except TimeoutException as e:
+        logger.error(f"执行超时: {e}")
+        return {"status": "error", "message": f"执行超时: {e}"}
+    except Exception as e:
+        logger.error(f"执行失败: {e}")
+        return {"status": "error", "message": str(e)}
+```
+
+### 4.5 日志设置模式
+
+```python
+logger = logging.getLogger(__name__)
+
+def _setup_logging(self):
+    """设置日志"""
+    if not logger.handlers:
+        handler = logging.StreamHandler()
+        formatter = logging.Formatter(
+            '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        )
+        handler.setFormatter(formatter)
+        logger.addHandler(handler)
+        logger.setLevel(logging.INFO)
+```
+
+---
+
+## 5. 开发者工作流
+
+### 5.1 环境设置
+
+```bash
+# 安装依赖
+pip install poetry
+poetry install
+
+# 或使用 pip
+pip install -r requirements.txt
+```
+
+### 5.2 运行测试
+
+```bash
+# 运行所有测试
+poetry run pytest
+
+# 运行单个测试文件
+poetry run pytest tests/test_plugin_manager.py
+
+# 运行单个测试用例
+poetry run pytest tests/test_plugin_manager.py::TestPluginManager::test_plugin_discovery
+
+# 带覆盖率报告
+poetry run pytest --cov=src --cov-report=html
+```
+
+### 5.3 运行应用
+
+```bash
+# 运行主演示
+poetry run python -m src.main
+
+# 或直接运行
+python src/main.py
+```
+
+### 5.4 代码质量检查
+
+```bash
+# 格式化代码
+poetry run black src/
+
+# 代码检查
+poetry run flake8 src/
+
+# 类型检查
+poetry run mypy src/
+```
+
+---
+
+## 6. 脚手架模板
+
+### 6.1 新建测试用例模板
+
+```python
+"""
+{模块名}测试用例
+"""
+
+import unittest
+import tempfile
+import os
+from pathlib import Path
+from src.core.{module} import {ClassName}
+
+
+class Test{ClassName}(unittest.TestCase):
+    
+    def setUp(self):
+        """测试前准备"""
+        self.temp_dir = tempfile.mkdtemp()
+        self.instance = {ClassName}()
+    
+    def tearDown(self):
+        """测试后清理"""
+        import shutil
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
+    
+    def test_{功能名}(self):
+        """测试{功能描述}"""
+        # Arrange
+        expected = "expected_value"
+        
+        # Act
+        result = self.instance.{method}()
+        
+        # Assert
+        self.assertEqual(result, expected)
+    
+    def test_{功能名}_error_handling(self):
+        """测试{功能名}错误处理"""
+        with self.assertRaises(ValueError):
+            self.instance.{method}(invalid_param)
+
+
+if __name__ == '__main__':
+    unittest.main()
+```
+
+### 6.2 新建DCC插件模板
+
+```python
+"""
+{插件名} - {简要描述}
+"""
+
+import logging
+from typing import Dict, Any, List
+from pathlib import Path
+
+from src.core.dcc_plugin_interface import (
+    DCCPluginInterface,
+    MayaPluginMixin,
+    dcc_plugin,
+    validate_params,
+    auto_register,
+    DCCSoftware
+)
+
+logger = logging.getLogger(__name__)
+
+
+@dcc_plugin(
+    name="{PluginName}",
+    version="1.0.0",
+    dcc=DCCSoftware.MAYA,  # 或 BLENDER, MAX
+    min_version="2022",
+    max_version="2025"
+)
+@auto_register
+class {PluginName}(DCCPluginInterface, MayaPluginMixin):
+    """{插件描述}"""
+    
+    PLUGIN_DESCRIPTION = "{详细描述}"
+    PLUGIN_AUTHOR = "{作者}"
+    
+    def __init__(self):
+        self._connected = False
+        self._setup_logging()
+    
+    def _setup_logging(self):
+        """设置日志"""
+        if not logger.handlers:
+            handler = logging.StreamHandler()
+            formatter = logging.Formatter(
+                '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+            )
+            handler.setFormatter(formatter)
+            logger.addHandler(handler)
+            logger.setLevel(logging.INFO)
+    
+    def connect_to_dcc(self) -> bool:
+        """连接到DCC"""
+        try:
+            import maya.cmds as cmds
+            self._connected = True
+            logger.info("成功连接到Maya")
+            return True
+        except ImportError:
+            logger.error("Maya环境未找到")
+            return False
+    
+    def disconnect_from_dcc(self):
+        """断开连接"""
+        self._connected = False
+        logger.info("断开DCC连接")
+    
+    @validate_params(
+        # 在此定义参数验证规则
+        # param_name={'type': type, 'min': val, 'max': val, 'default': val, 'required': bool}
+    )
+    def execute(self, **kwargs) -> Dict[str, Any]:
+        """执行主功能"""
+        try:
+            logger.info("开始执行...")
+            
+            if not self._connected and not self.connect_to_dcc():
+                return {"status": "error", "message": "无法连接到DCC"}
+            
+            # TODO: 实现核心逻辑
+            result = self._main_logic(kwargs)
+            
+            logger.info("执行完成")
+            return {
+                "status": "success",
+                "result": result
+            }
+            
+        except Exception as e:
+            logger.error(f"执行失败: {e}")
+            return {"status": "error", "message": str(e)}
+    
+    def _main_logic(self, params: Dict[str, Any]) -> Any:
+        """核心逻辑实现"""
+        # TODO: 实现具体功能
+        pass
+    
+    def validate_parameters(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """验证参数"""
+        return params
+    
+    def get_info(self) -> Dict[str, Any]:
+        """获取插件信息"""
+        return {
+            "name": self.PLUGIN_NAME,
+            "version": self.PLUGIN_VERSION,
+            "type": self.PLUGIN_TYPE,
+            "target_dcc": self.TARGET_DCC.value,
+            "description": self.PLUGIN_DESCRIPTION,
+            "author": self.PLUGIN_AUTHOR
+        }
+    
+    def get_selection(self) -> List[str]:
+        """获取当前选择"""
+        try:
+            return self.maya_eval("ls(selection=True)") or []
+        except Exception:
+            return []
+    
+    def get_scene_objects(self) -> List[Dict[str, Any]]:
+        """获取场景对象"""
+        return []
+
+
+# 独立运行测试
+if __name__ == "__main__":
+    plugin = {PluginName}()
+    print(f"插件信息: {plugin.get_info()}")
+```
+
+### 6.3 SDD配置文件模板
+
+```yaml
+tool:
+  name: "{ToolName}"
+  version: "1.0.0"
+  type: "dcc"  # dcc | ue_engine | utility
+  description: "{工具详细描述}"
+
+metadata:
+  author: "{作者名}"
+  created_date: "{YYYY-MM-DD}"
+  compatibility:
+    - platform: "dcc"
+      name: "maya"
+      min_version: "2022"
+      max_version: "2025"
+
+configuration:
+  parameters:
+    - name: "{param_name}"
+      type: "string"  # string | number | boolean | list | dict
+      required: false
+      default: "{default_value}"
+      description: "{参数说明}"
+
+execution:
+  entry_point: "main.py::execute"
+  dependencies:
+    - "pymel"
+    - "numpy"
+  resources:
+    memory_limit: "512MB"
+    timeout: "30s"
+    cpu_limit: "1"
+
+integration:
+  interfaces:
+    - name: "Main Interface"
+      type: "qt"  # qt | web | console | api
+```
+
+---
+
+## 7. 重要约束
+
+### 7.1 风格一致性规则
+- **缩进**: 使用4个空格，不使用Tab
+- **行宽**: 最大88字符（Black默认）
+- **引号**: 优先使用双引号 `"string"`
+- **变量命名**: 必须使用snake_case
+- **类命名**: 必须使用PascalCase
+- **常量**: 必须使用UPPER_SNAKE_CASE
+
+### 7.2 零幻觉原则
+- **只使用本文档列出的API和类**
+- **不要假设存在未定义的函数或方法**
+- **对于不确定的API，请先查阅源代码**
+
+### 7.3 安全执行原则
+- **所有插件执行必须通过DynamicLoader进行**
+- **外部输入必须经过参数验证**
+- **使用超时机制防止无限循环**
+- **敏感操作需要权限检查**
+
+### 7.4 返回值格式
+所有插件execute方法必须返回统一格式：
+```python
+{"status": "success" | "error", ...}
+```
+
+### 7.5 日志规范
+- 使用 `logging.getLogger(__name__)` 获取logger
+- INFO级别记录关键操作
+- ERROR级别记录异常
+- DEBUG级别记录详细调试信息
+
+</rule>
