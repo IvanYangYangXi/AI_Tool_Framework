@@ -7,9 +7,17 @@ import os
 from pathlib import Path
 
 # 添加src目录到Python路径
+<<<<<<< HEAD
+project_root = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(project_root))
+sys.path.insert(0, str(project_root / "src"))
+
+from ai_nlp import AIToolGenerator
+=======
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.ai_nlp import AIToolGenerator
+>>>>>>> a144555ef2db8bb2f47e5ec0034cc195b0a83f63
 import logging
 
 def setup_demo_logging():
