@@ -13,6 +13,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from src.core import PluginManager, DynamicLoader, ConfigManager, PermissionSystem
 from src.core.permission_system import ResourceType, PermissionLevel
 from src.ai_nlp import AIToolGenerator
+from src.requirement_analysis import RequirementAnalyzer, GuidanceSystem
 
 def setup_logging():
     """设置日志配置"""
@@ -190,6 +191,75 @@ def demo_ai_tool_generation():
     print("AI工具生成功能演示完成!")
     print("=" * 50)
 
+def demo_intelligent_requirement_analysis():
+    """演示智能需求分析功能"""
+    print("\n" + "=" * 50)
+    print("智能需求分析演示")
+    print("=" * 50)
+    
+    print("\n1. 初始化需求分析组件...")
+    
+    # 创建需求分析器
+    requirement_analyzer = RequirementAnalyzer(ai_provider="openai")
+    guidance_system = GuidanceSystem(requirement_analyzer)
+    
+    print("[OK] 需求分析组件初始化完成")
+    
+    # 测试静态分析
+    print("\n2. 需求质量静态分析...")
+    test_description = "做一个Maya的工具，能把模型优化一下"
+    
+    analysis_result = requirement_analyzer.analyze_requirement(test_description)
+    
+    print(f"  原始需求: {analysis_result.original_description}")
+    print(f"  质量得分: {analysis_result.quality_score:.1f}/100")
+    print(f"  质量等级: {analysis_result.quality_level.value}")
+    print(f"  缺失元素: {analysis_result.missing_elements}")
+    print(f"  模糊表述: {len(analysis_result.ambiguities)} 处")
+    print(f"  改进建议: ")
+    for i, recommendation in enumerate(analysis_result.recommendations[:3], 1):
+        print(f"    {i}. {recommendation}")
+    
+    print(f"  精炼后的需求: {analysis_result.refined_description}")
+    
+    # 测试交互式引导
+    print("\n3. 交互式需求引导演示...")
+    
+    # 开始引导流程
+    guidance_response = guidance_system.start_guidance()
+    print("  引导系统启动:")
+    # 处理可能的emoji字符
+    message = guidance_response['message']
+    if isinstance(message, str):
+        # 移除或替换emoji字符
+        import re
+        message = re.sub(r'[\U0001F600-\U0001F64F]', '[表情]', message)  # 表情符号
+        message = re.sub(r'[\U0001F300-\U0001F5FF]', '[符号]', message)  # 符号
+    print(f"  {message}")
+    
+    # 模拟几轮交互
+    test_interactions = [
+        "我想做一个Maya的网格清理工具",
+        "Maya",
+        "清理重复顶点，优化网格拓扑结构",
+        "处理OBJ和FBX格式，容差值可配置"
+    ]
+    
+    for i, user_input in enumerate(test_interactions, 1):
+        print(f"\n  第{i}轮交互:")
+        print(f"  用户输入: {user_input}")
+        
+        response = guidance_system.process_user_input(user_input)
+        print(f"  系统响应: {response['message'][:100]}...")
+        
+        if response.get('is_complete'):
+            print("  ✓ 需求引导完成")
+            break
+    
+    print("\n" + "=" * 50)
+    print("智能需求分析演示完成!")
+    print("=" * 50)
+
 def main():
     """主函数"""
     setup_logging()
@@ -201,8 +271,12 @@ def main():
         # 运行AI功能演示
         demo_ai_tool_generation()
         
+        # 运行智能需求分析演示
+        demo_intelligent_requirement_analysis()
+        
         print("\n所有演示完成!")
         print("\n生成的AI工具可在 ./generated_tools/ 目录中找到")
+        print("智能需求分析功能可以帮助完善工具开发需求")
         
     except KeyboardInterrupt:
         print("\n程序被用户中断")

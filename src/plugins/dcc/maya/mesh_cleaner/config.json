@@ -1,0 +1,66 @@
+{
+  "plugin": {
+    "name": "MayaMeshCleaner",
+    "version": "1.0.0",
+    "type": "dcc",
+    "target_dcc": "maya",
+    "min_version": "2022",
+    "max_version": "2025",
+    "description": "专业的Maya网格清理和优化工具，支持删除重复顶点、合并接近顶点、优化网格拓扑结构",
+    "author": "DCC Tool Framework Team",
+    "entry_point": "plugin.py"
+  },
+  "dependencies": {
+    "required": ["maya.cmds"],
+    "optional": ["maya.mel"]
+  },
+  "capabilities": [
+    "删除重复顶点",
+    "合并接近顶点",
+    "优化网格拓扑",
+    "法线重计算",
+    "UV坐标保持"
+  ],
+  "parameters": {
+    "tolerance": {
+      "type": "float",
+      "default": 0.001,
+      "min": 0.0001,
+      "max": 0.1,
+      "description": "顶点合并容差"
+    },
+    "delete_duplicates": {
+      "type": "boolean",
+      "default": true,
+      "description": "删除重复顶点"
+    },
+    "merge_vertices": {
+      "type": "boolean",
+      "default": true,
+      "description": "合并接近顶点"
+    },
+    "optimize_normals": {
+      "type": "boolean",
+      "default": true,
+      "description": "优化法线"
+    },
+    "preserve_uvs": {
+      "type": "boolean",
+      "default": true,
+      "description": "保持UV坐标"
+    },
+    "output_path": {
+      "type": "string",
+      "default": "",
+      "description": "输出文件路径"
+    }
+  },
+  "installation": {
+    "manual": "将plugin.py文件放置在Maya的scripts目录下",
+    "automatic": "通过框架插件管理器自动安装"
+  },
+  "usage": {
+    "basic": "选择网格对象后运行插件，设置清理参数",
+    "advanced": "可批量处理多个对象，支持自定义输出报告"
+  }
+}

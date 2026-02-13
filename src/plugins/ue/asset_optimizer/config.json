@@ -1,0 +1,75 @@
+{
+  "plugin": {
+    "name": "UEAssetOptimizer",
+    "version": "1.0.0",
+    "type": "ue",
+    "target_ue_version": "5.1",
+    "project_type": "cpp",
+    "min_version": "5.0",
+    "max_version": "5.4",
+    "description": "专业的UE资产优化工具，支持纹理压缩、网格LOD生成、材质实例化等功能",
+    "author": "DCC Tool Framework Team",
+    "entry_point": "plugin.py"
+  },
+  "dependencies": {
+    "required": ["unreal_engine"],
+    "optional": ["python_api"]
+  },
+  "capabilities": [
+    "纹理压缩优化",
+    "网格LOD自动生成",
+    "材质实例化",
+    "碰撞体优化",
+    "资产大小分析",
+    "性能报告生成"
+  ],
+  "parameters": {
+    "texture_quality": {
+      "type": "integer",
+      "default": 75,
+      "min": 1,
+      "max": 100,
+      "description": "纹理压缩质量"
+    },
+    "generate_lods": {
+      "type": "boolean",
+      "default": true,
+      "description": "生成网格LOD"
+    },
+    "create_material_instances": {
+      "type": "boolean",
+      "default": true,
+      "description": "创建材质实例"
+    },
+    "compress_textures": {
+      "type": "boolean",
+      "default": true,
+      "description": "压缩纹理"
+    },
+    "optimize_collision": {
+      "type": "boolean",
+      "default": true,
+      "description": "优化碰撞体"
+    },
+    "output_report": {
+      "type": "boolean",
+      "default": true,
+      "description": "输出优化报告"
+    }
+  },
+  "supported_asset_types": [
+    "StaticMesh",
+    "SkeletalMesh", 
+    "Texture2D",
+    "Material",
+    "MaterialInstance"
+  ],
+  "installation": {
+    "manual": "将plugin.py文件放置在UE项目的Plugins目录下",
+    "automatic": "通过框架插件管理器自动安装"
+  },
+  "usage": {
+    "basic": "在UE编辑器中选择资产后运行插件，设置优化参数",
+    "advanced": "可批量处理多个资产类型，支持自定义优化策略"
+  }
+}
