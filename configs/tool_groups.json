@@ -1,0 +1,15 @@
+{
+  "_description": "工具分组默认配置 - 用户自定义会保存到本地配置目录",
+  "groups": [
+    {"id": "all", "name": "全部", "icon": "📋", "order": 0},
+    {"id": "modeling", "name": "建模", "icon": "🎨", "order": 1},
+    {"id": "animation", "name": "动画", "icon": "🎬", "order": 2},
+    {"id": "rigging", "name": "绑定", "icon": "🦴", "order": 3},
+    {"id": "io", "name": "导入导出", "icon": "📦", "order": 4},
+    {"id": "utility", "name": "通用", "icon": "🔧", "order": 5},
+    {"id": "custom", "name": "自定义", "icon": "⭐", "order": 6}
+  ],
+  "tool_assignments": {
+    "_comment": "工具ID到分组的映射，格式: tool_id: [group1, group2]"
+  }
+}

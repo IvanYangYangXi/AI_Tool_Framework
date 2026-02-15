@@ -9,7 +9,8 @@
     "max_version": "5.4",
     "description": "获取Unreal Engine中选择的资产并打印其名称 - 示例脚本",
     "author": "DCC Tool Framework Team",
-    "entry_point": "plugin.py"
+    "entry_point": "plugin.py",
+    "tags": ["utility"]
   },
   "dependencies": {
     "required": ["unreal"],

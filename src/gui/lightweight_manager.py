@@ -13,6 +13,7 @@ import subprocess
 import threading
 from datetime import datetime
 import tempfile
+import io
 
 class LightweightDCCManager:
     """
@@ -39,6 +40,16 @@ class LightweightDCCManager:
         # 加载本地配置
         self.local_settings = self._load_local_settings()
         
+        # 加载工具分组配置
+        self.tool_groups = self._load_tool_groups()
+        
+        # 搜索防抖变量
+        self._search_after_ids = {}
+        
+        # 分组下拉框引用
+        self.group_combos = {}
+        self.search_vars = {}
+        
         self.setup_ui()
         # 启动时自动检查Git更新
         self._startup_git_check()
@@ -56,7 +67,7 @@ class LightweightDCCManager:
         (base_dir / "config").mkdir(parents=True, exist_ok=True)
         
         # 创建本地脚本目录结构
-        for category in ['maya', 'max', 'blender', 'ue']:
+        for category in ['maya', 'max', 'blender', 'ue', 'other']:
             (base_dir / "local_scripts" / category).mkdir(parents=True, exist_ok=True)
     
     def _get_local_settings_path(self) -> Path:
@@ -112,6 +123,84 @@ class LightweightDCCManager:
         
         self.local_settings["last_ue_project"] = path
         self._save_local_settings()
+    
+    def _load_tool_groups(self) -> dict:
+        """
+        加载工具分组配置
+        优先级：本地配置 > 默认配置
+        """
+        default_groups = {
+            "groups": [
+                {"id": "all", "name": "全部", "icon": "📋"},
+                {"id": "modeling", "name": "建模", "icon": "🎨"},
+                {"id": "animation", "name": "动画", "icon": "🎬"},
+                {"id": "rigging", "name": "绑定", "icon": "🦴"},
+                {"id": "io", "name": "导入导出", "icon": "📦"},
+                {"id": "utility", "name": "通用", "icon": "🔧"},
+                {"id": "custom", "name": "自定义", "icon": "⭐"},
+            ],
+            "tool_assignments": {}
+        }
+        
+        # 尝试加载默认配置
+        default_config_path = self.git_repo_path / "configs" / "tool_groups.json"
+        if default_config_path.exists():
+            try:
+                with open(default_config_path, 'r', encoding='utf-8') as f:
+                    loaded = json.load(f)
+                    default_groups.update(loaded)
+            except Exception as e:
+                print(f"加载默认分组配置失败: {e}")
+        
+        # 尝试加载本地配置
+        local_config_path = self._get_documents_base_dir() / "config" / "tool_groups_local.json"
+        if local_config_path.exists():
+            try:
+                with open(local_config_path, 'r', encoding='utf-8') as f:
+                    local_groups = json.load(f)
+                    # 合并本地自定义分组
+                    if "custom_groups" in local_groups:
+                        for custom in local_groups["custom_groups"]:
+                            if custom not in default_groups["groups"]:
+                                default_groups["groups"].append(custom)
+                    # 合并本地工具分配
+                    if "tool_assignments" in local_groups:
+                        default_groups["tool_assignments"].update(local_groups["tool_assignments"])
+            except Exception as e:
+                print(f"加载本地分组配置失败: {e}")
+        
+        return default_groups
+    
+    def _save_tool_groups_local(self):
+        """保存本地分组配置"""
+        local_config_path = self._get_documents_base_dir() / "config" / "tool_groups_local.json"
+        
+        # 只保存本地自定义的内容
+        local_data = {
+            "custom_groups": [g for g in self.tool_groups.get("groups", []) 
+                             if g.get("is_custom", False)],
+            "tool_assignments": self.tool_groups.get("tool_assignments", {})
+        }
+        
+        try:
+            local_config_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(local_config_path, 'w', encoding='utf-8') as f:
+                json.dump(local_data, f, indent=2, ensure_ascii=False)
+        except Exception as e:
+            print(f"保存本地分组配置失败: {e}")
+    
+    def get_tool_groups(self, tool_id: str) -> list:
+        """获取工具的分组列表"""
+        # 先检查本地分配
+        if tool_id in self.tool_groups.get("tool_assignments", {}):
+            return self.tool_groups["tool_assignments"][tool_id]
+        
+        # 从工具的config.json中获取tags
+        if hasattr(self, 'tools_cache') and tool_id in self.tools_cache:
+            tool_info = self.tools_cache[tool_id]
+            return tool_info.get('tags', [])
+        
+        return []
         
     def _get_git_repo_path(self):
         """
@@ -361,6 +450,7 @@ class LightweightDCCManager:
         self.create_tool_category("3ds Max工具", "max")
         self.create_tool_category("Blender工具", "blender")
         self.create_tool_category("UE工具", "ue")
+        self.create_tool_category("其他工具", "other")
         
         # 刷新按钮
         refresh_btn = ttk.Button(tools_frame, text="🔄 刷新工具列表", 
@@ -372,22 +462,55 @@ class LightweightDCCManager:
         frame = ttk.Frame(self.tools_notebook)
         self.tools_notebook.add(frame, text=category_name)
         
-        # 工具列表
-        columns = ('version', 'source', 'status')
-        tree = ttk.Treeview(frame, columns=columns, show='tree headings', height=12)
+        # === 筛选栏 ===
+        filter_frame = ttk.Frame(frame)
+        filter_frame.pack(fill=tk.X, pady=(5, 5), padx=5)
+        
+        # 分组下拉框
+        ttk.Label(filter_frame, text="分组:").pack(side=tk.LEFT)
+        group_values = [f"{g['icon']} {g['name']}" for g in self.tool_groups.get("groups", [])]
+        group_combo = ttk.Combobox(filter_frame, values=group_values, state="readonly", width=12)
+        group_combo.pack(side=tk.LEFT, padx=(5, 10))
+        group_combo.set(group_values[0] if group_values else "📋 全部")
+        group_combo.bind('<<ComboboxSelected>>', lambda e, key=category_key: self._on_group_change(key))
+        self.group_combos[category_key] = group_combo
+        
+        # 分组管理按钮
+        ttk.Button(filter_frame, text="⚙", width=2, 
+                  command=self._show_group_manager).pack(side=tk.LEFT, padx=(0, 15))
+        
+        # 搜索框
+        ttk.Label(filter_frame, text="搜索:").pack(side=tk.LEFT)
+        search_var = tk.StringVar()
+        search_entry = ttk.Entry(filter_frame, textvariable=search_var, width=15)
+        search_entry.pack(side=tk.LEFT, padx=5)
+        search_var.trace_add('write', lambda *args, key=category_key: self._on_search_change(key))
+        self.search_vars[category_key] = search_var
+        
+        # 搜索清除按钮
+        ttk.Button(filter_frame, text="✕", width=2,
+                  command=lambda: search_var.set("")).pack(side=tk.LEFT)
+        
+        # === 工具列表 ===
+        list_frame = ttk.Frame(frame)
+        list_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=(0, 5))
+        
+        # 修改列，添加执行模式
+        columns = ('version', 'source', 'mode')
+        tree = ttk.Treeview(list_frame, columns=columns, show='tree headings', height=12)
         
         tree.heading('#0', text='工具名称')
         tree.heading('version', text='版本')
         tree.heading('source', text='来源')
-        tree.heading('status', text='状态')
+        tree.heading('mode', text='执行模式')
         
-        tree.column('#0', width=200)
-        tree.column('version', width=60)
-        tree.column('source', width=50)
-        tree.column('status', width=50)
+        tree.column('#0', width=180)
+        tree.column('version', width=50)
+        tree.column('source', width=40)
+        tree.column('mode', width=70)
         
         # 滚动条
-        scrollbar = ttk.Scrollbar(frame, orient=tk.VERTICAL, command=tree.yview)
+        scrollbar = ttk.Scrollbar(list_frame, orient=tk.VERTICAL, command=tree.yview)
         tree.configure(yscrollcommand=scrollbar.set)
         
         tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
@@ -396,6 +519,7 @@ class LightweightDCCManager:
         # 绑定事件
         tree.bind('<<TreeviewSelect>>', self.on_tool_select)
         tree.bind('<Double-1>', self.on_tool_double_click)
+        tree.bind('<Button-3>', lambda e, key=category_key: self._show_tool_context_menu(e, key))
         
         # 保存引用
         setattr(self, f"{category_key}_tree", tree)
@@ -442,7 +566,7 @@ class LightweightDCCManager:
         control_frame = ttk.LabelFrame(exec_frame, text="执行控制", padding="10")
         control_frame.pack(fill=tk.X, pady=(0, 10))
         
-        # 执行按钮
+        # 执行按钮 - 第一行
         button_frame = ttk.Frame(control_frame)
         button_frame.pack(fill=tk.X)
         
@@ -450,11 +574,19 @@ class LightweightDCCManager:
                                         command=self.run_in_dcc)
         self.run_in_dcc_btn.pack(side=tk.LEFT, padx=(0, 5), fill=tk.X, expand=True)
         
-        self.generate_script_btn = ttk.Button(button_frame, text="📝 生成脚本文件", 
+        self.run_standalone_btn = ttk.Button(button_frame, text="🖥️ 独立运行", 
+                                            command=self.run_standalone)
+        self.run_standalone_btn.pack(side=tk.LEFT, padx=(0, 5), fill=tk.X, expand=True)
+        
+        # 执行按钮 - 第二行
+        button_frame2 = ttk.Frame(control_frame)
+        button_frame2.pack(fill=tk.X, pady=(5, 0))
+        
+        self.generate_script_btn = ttk.Button(button_frame2, text="📝 生成脚本文件", 
                                              command=self.generate_script)
         self.generate_script_btn.pack(side=tk.LEFT, padx=(0, 5), fill=tk.X, expand=True)
         
-        self.test_btn = ttk.Button(button_frame, text="🧪 测试参数", 
+        self.test_btn = ttk.Button(button_frame2, text="🧪 测试参数", 
                                   command=self.test_parameters)
         self.test_btn.pack(side=tk.LEFT, fill=tk.X, expand=True)
         
@@ -534,7 +666,7 @@ class LightweightDCCManager:
         self.log_message("正在刷新工具列表...")
         
         # 清空现有列表和缓存
-        for category in ['maya', 'max', 'blender', 'ue']:
+        for category in ['maya', 'max', 'blender', 'ue', 'other']:
             tree = getattr(self, f"{category}_tree")
             for item in tree.get_children():
                 tree.delete(item)
@@ -566,7 +698,8 @@ class LightweightDCCManager:
                 'maya': plugins_dir / 'dcc' / 'maya',
                 'max': plugins_dir / 'dcc' / 'max', 
                 'blender': plugins_dir / 'dcc' / 'blender',
-                'ue': plugins_dir / 'ue'
+                'ue': plugins_dir / 'ue',
+                'other': plugins_dir / 'other'
             }
             
             for category, category_path in tool_categories.items():
@@ -590,7 +723,8 @@ class LightweightDCCManager:
                 'maya': local_scripts_dir / 'maya',
                 'max': local_scripts_dir / 'max', 
                 'blender': local_scripts_dir / 'blender',
-                'ue': local_scripts_dir / 'ue'
+                'ue': local_scripts_dir / 'ue',
+                'other': local_scripts_dir / 'other'
             }
             
             for category, category_path in tool_categories.items():
@@ -625,6 +759,16 @@ class LightweightDCCManager:
                         # 本地工具使用 local_ 前缀避免ID冲突
                         id_prefix = "local_" if is_local else ""
                         
+                        # 获取执行模式
+                        execution_config = config.get('execution', {})
+                        exec_mode = execution_config.get('mode', 'dcc')
+                        tool_type = config['plugin'].get('type', category)
+                        
+                        # other 类型默认独立运行
+                        if category == 'other' or tool_type == 'other':
+                            exec_mode = execution_config.get('mode', 'standalone')
+                            tool_type = 'other'
+                        
                         tool_info = {
                             'id': f"{id_prefix}{category}_{tool_dir.name}",
                             'name': config['plugin']['name'],
@@ -634,7 +778,10 @@ class LightweightDCCManager:
                             'parameters': config.get('parameters', {}),
                             'status': '可用',
                             'source': source,
-                            'is_local': is_local
+                            'is_local': is_local,
+                            'type': tool_type,
+                            'execution_mode': exec_mode,
+                            'category': category
                         }
                         
                         # 添加到树形视图
@@ -661,6 +808,33 @@ class LightweightDCCManager:
             tool_info = self.tools_cache[tool_id]
             self.display_tool_info(tool_info)
             self.create_parameter_widgets(tool_info)
+            
+            # 根据执行模式启用/禁用按钮
+            self._update_execution_buttons(tool_info)
+    
+    def _update_execution_buttons(self, tool_info):
+        """根据工具的执行模式更新按钮状态"""
+        exec_mode = tool_info.get('execution_mode', 'dcc')
+        tool_type = tool_info.get('type', 'dcc')
+        
+        # other 类型工具默认独立运行
+        if tool_type == 'other':
+            exec_mode = tool_info.get('execution_mode', 'standalone')
+        
+        # 根据执行模式设置按钮状态
+        if exec_mode == 'standalone':
+            self.run_in_dcc_btn.config(state='disabled')
+            self.run_standalone_btn.config(state='normal')
+        elif exec_mode == 'dcc':
+            self.run_in_dcc_btn.config(state='normal')
+            self.run_standalone_btn.config(state='disabled')
+        elif exec_mode == 'both':
+            self.run_in_dcc_btn.config(state='normal')
+            self.run_standalone_btn.config(state='normal')
+        else:
+            # 默认两个都可用
+            self.run_in_dcc_btn.config(state='normal')
+            self.run_standalone_btn.config(state='normal')
     
     def on_tool_double_click(self, event):
         """工具双击事件"""
@@ -669,6 +843,12 @@ class LightweightDCCManager:
         selection = tree.selection()
         if selection:
             tool_id = selection[0]
+            
+            # other 类型工具双击直接独立运行
+            if 'other' in tool_id.lower():
+                self.run_standalone()
+                return
+            
             if 'maya' in tool_id.lower():
                 self.dcc_combo.set("Maya")
             elif 'max' in tool_id.lower():
@@ -682,8 +862,39 @@ class LightweightDCCManager:
     
     def display_tool_info(self, tool_info):
         """显示工具详细信息"""
+        # 获取工具分组信息
+        tool_id = tool_info.get('id', '')
+        tool_groups_list = self.get_tool_groups(tool_id)
+        
+        # 将分组ID转换为显示名称
+        group_names = []
+        for group_id in tool_groups_list:
+            for g in self.tool_groups.get("groups", []):
+                if g["id"] == group_id:
+                    group_names.append(f"{g['icon']} {g['name']}")
+                    break
+            else:
+                group_names.append(group_id)
+        
+        # 获取执行模式
+        exec_mode = tool_info.get('execution_mode', 'dcc')
+        if tool_info.get('type') == 'other':
+            exec_mode = tool_info.get('execution_mode', 'standalone')
+        
+        exec_mode_display = {
+            'dcc': '🔗 DCC中运行',
+            'standalone': '🖥️ 独立运行',
+            'both': '🔗 DCC / 🖥️ 独立'
+        }.get(exec_mode, exec_mode)
+        
+        # 来源
+        source = "本地" if tool_info.get('is_local') else "共享"
+        
         info_text = f"""工具名称: {tool_info['name']}
 版本: {tool_info['version']}
+来源: {source}
+执行模式: {exec_mode_display}
+分组: {', '.join(group_names) if group_names else '未分组'}
 路径: {tool_info['path']}
 
 描述:
@@ -2514,6 +2725,152 @@ finally:
         else:
             messagebox.showinfo("提示", f"{self.connected_dcc}执行功能开发中...")
     
+    def run_standalone(self):
+        """独立运行工具（不需要连接DCC）"""
+        # 获取当前选中的工具
+        current_tool = self._get_selected_tool()
+        if not current_tool:
+            messagebox.showwarning("警告", "请先选择要执行的工具")
+            return
+        
+        # 检查执行模式
+        exec_mode = current_tool.get('execution_mode', 'dcc')
+        if current_tool.get('type') == 'other':
+            exec_mode = current_tool.get('execution_mode', 'standalone')
+        
+        if exec_mode == 'dcc':
+            messagebox.showwarning("警告", "此工具不支持独立运行，请在DCC中执行")
+            return
+        
+        # 在主线程收集参数（避免线程安全问题）
+        params = self.collect_parameters()
+        
+        self.log_message(f"正在独立运行工具: {current_tool['name']}...")
+        
+        # 在后台线程中执行
+        def execute():
+            try:
+                result = self._execute_standalone(current_tool, params)
+                self.root.after(0, lambda: self._on_standalone_success(current_tool['name'], result))
+            except Exception as e:
+                self.root.after(0, lambda: self._on_standalone_failed(str(e)))
+        
+        threading.Thread(target=execute, daemon=True).start()
+    
+    def _execute_standalone(self, tool_info, params):
+        """执行独立运行的工具"""
+        import importlib.util
+        
+        # 工具路径已经是绝对路径
+        tool_path = Path(tool_info['path'])
+        plugin_file = tool_path / "plugin.py"
+        
+        if not plugin_file.exists():
+            raise FileNotFoundError(f"插件文件不存在: {plugin_file}")
+        
+        # 将参数写入临时文件，避免命令行转义问题
+        # Windows 上需要先关闭文件才能让其他进程访问
+        params_file_path = tempfile.mktemp(suffix='.json')
+        try:
+            with open(params_file_path, 'w', encoding='utf-8') as f:
+                json.dump(params, f, ensure_ascii=False)
+            
+            # 构建执行脚本
+            runner_code = f'''
+import sys
+import io
+import json
+
+# 设置stdout为UTF-8编码，避免Windows GBK编码问题
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+
+# 添加项目路径
+sys.path.insert(0, r"{str(self.git_repo_path)}")
+sys.path.insert(0, r"{str(tool_path)}")
+
+# 导入并执行工具
+import importlib.util
+spec = importlib.util.spec_from_file_location("tool_module", r"{str(plugin_file)}")
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+
+# 从临时文件读取参数
+with open(r"{params_file_path}", "r", encoding="utf-8") as f:
+    params = json.load(f)
+
+# 执行
+result = None
+if hasattr(module, 'execute'):
+    result = module.execute(**params)
+
+# 输出结果为JSON
+if result:
+    print("__RESULT_START__")
+    print(json.dumps(result, ensure_ascii=False, default=str))
+    print("__RESULT_END__")
+'''
+            
+            # 使用subprocess执行
+            result = subprocess.run(
+                [sys.executable, "-c", runner_code],
+                capture_output=True,
+                timeout=60,
+                cwd=str(tool_path),
+                encoding='utf-8',
+                errors='replace'
+            )
+            
+        finally:
+            # 清理临时文件
+            try:
+                os.unlink(params_file_path)
+            except:
+                pass
+        
+        # 解析输出
+        output = result.stdout
+        stderr = result.stderr
+        
+        if result.returncode != 0:
+            error_detail = f"返回码: {result.returncode}\nstdout: {output}\nstderr: {stderr}"
+            raise RuntimeError(f"工具执行失败:\n{error_detail}")
+        
+        # 提取结果JSON
+        parsed_result = {"status": "success", "output": output}
+        
+        if "__RESULT_START__" in output and "__RESULT_END__" in output:
+            try:
+                start = output.index("__RESULT_START__") + len("__RESULT_START__")
+                end = output.index("__RESULT_END__")
+                result_json = output[start:end].strip()
+                parsed_result = json.loads(result_json)
+            except:
+                pass
+        
+        return parsed_result
+    
+    def _on_standalone_success(self, tool_name, result):
+        """独立执行成功"""
+        self.log_message(f"✓ 工具 {tool_name} 独立执行完成")
+        
+        # 显示结果
+        if isinstance(result, dict):
+            output = result.get('output', '')
+            if output:
+                # 显示前几行输出
+                lines = output.strip().split('\n')
+                for line in lines[:10]:
+                    if line.strip() and not line.startswith('__'):
+                        self.log_message(f"  {line}")
+                if len(lines) > 10:
+                    self.log_message(f"  ... (共 {len(lines)} 行输出)")
+    
+    def _on_standalone_failed(self, error):
+        """独立执行失败"""
+        self.log_message(f"✗ 独立执行失败: {error}", level="error")
+        messagebox.showerror("执行失败", f"工具执行失败:\n{error}")
+    
     def _execute_in_maya(self, tool_info):
         """在Maya中执行工具"""
         # 收集参数
@@ -2967,6 +3324,320 @@ for key, value in {params}.items():
         lines = self.log_text.get(1.0, tk.END).split('\n')
         if len(lines) > 300:  # 保留最多300行
             self.log_text.delete(1.0, f"{len(lines)-299}.0")
+    
+    # ===== 分组筛选和搜索功能 =====
+    
+    def _on_group_change(self, category_key):
+        """分组下拉框变化时的回调"""
+        self._filter_tools(category_key)
+    
+    def _on_search_change(self, category_key):
+        """搜索框变化时的回调（带防抖）"""
+        # 取消之前的定时器
+        if category_key in self._search_after_ids:
+            self.root.after_cancel(self._search_after_ids[category_key])
+        
+        # 设置新的定时器（300ms延迟）
+        self._search_after_ids[category_key] = self.root.after(
+            300, lambda: self._filter_tools(category_key)
+        )
+    
+    def _filter_tools(self, category_key):
+        """根据分组和搜索条件筛选工具列表"""
+        tree = getattr(self, f"{category_key}_tree", None)
+        if not tree:
+            return
+        
+        # 获取筛选条件
+        group_combo = self.group_combos.get(category_key)
+        search_var = self.search_vars.get(category_key)
+        
+        selected_group = "all"
+        if group_combo:
+            group_text = group_combo.get()
+            # 从 "📋 全部" 格式中提取分组ID
+            for g in self.tool_groups.get("groups", []):
+                if f"{g['icon']} {g['name']}" == group_text:
+                    selected_group = g["id"]
+                    break
+        
+        search_text = search_var.get().lower().strip() if search_var else ""
+        
+        # 清空当前列表
+        for item in tree.get_children():
+            tree.delete(item)
+        
+        # 根据分类筛选工具
+        if not hasattr(self, 'tools_cache'):
+            return
+        
+        for tool_id, tool_info in self.tools_cache.items():
+            # 检查工具是否属于当前分类
+            tool_type = tool_info.get('type', '')
+            target_dcc = tool_info.get('target_dcc', '').lower()
+            
+            # 根据category_key判断
+            if category_key == 'maya' and target_dcc not in ['maya', 'autodesk_maya']:
+                if tool_type != 'dcc' or 'maya' not in tool_id.lower():
+                    continue
+            elif category_key == 'max' and target_dcc not in ['3ds_max', '3dsmax', 'max']:
+                if tool_type != 'dcc' or 'max' not in tool_id.lower():
+                    continue
+            elif category_key == 'blender' and target_dcc not in ['blender']:
+                if tool_type != 'dcc' or 'blender' not in tool_id.lower():
+                    continue
+            elif category_key == 'ue' and target_dcc not in ['unreal', 'ue', 'unreal_engine']:
+                if tool_type != 'ue_engine' or 'ue' not in tool_id.lower():
+                    continue
+            elif category_key == 'other' and tool_type != 'other':
+                continue
+            
+            # 检查分组筛选
+            if selected_group != "all":
+                tool_groups_list = self.get_tool_groups(tool_id)
+                if selected_group not in tool_groups_list:
+                    continue
+            
+            # 检查搜索筛选
+            if search_text:
+                name = tool_info.get('name', '').lower()
+                desc = tool_info.get('description', '').lower()
+                if search_text not in name and search_text not in desc:
+                    continue
+            
+            # 添加到列表
+            source = "本地" if tool_info.get('is_local') else "共享"
+            
+            # 获取执行模式显示
+            exec_mode = tool_info.get('execution_mode', 'dcc')
+            if tool_info.get('type') == 'other':
+                exec_mode = tool_info.get('execution_mode', 'standalone')
+            mode_display = {'dcc': 'DCC', 'standalone': '独立', 'both': '两者'}.get(exec_mode, '')
+            
+            tree.insert('', tk.END, iid=tool_id, text=tool_info['name'],
+                       values=(tool_info['version'], source, mode_display))
+    
+    def _show_tool_context_menu(self, event, category_key):
+        """显示工具右键菜单"""
+        tree = getattr(self, f"{category_key}_tree", None)
+        if not tree:
+            return
+        
+        # 选中点击的项
+        item = tree.identify_row(event.y)
+        if not item:
+            return
+        tree.selection_set(item)
+        
+        # 获取工具信息
+        if not hasattr(self, 'tools_cache') or item not in self.tools_cache:
+            return
+        
+        tool_info = self.tools_cache[item]
+        
+        # 创建菜单
+        menu = tk.Menu(self.root, tearoff=0)
+        
+        # 执行选项
+        exec_mode = tool_info.get('execution_mode', 'dcc')
+        if tool_info.get('type') == 'other':
+            exec_mode = tool_info.get('execution_mode', 'standalone')
+        
+        if exec_mode in ['dcc', 'both']:
+            menu.add_command(label="▶️ 在DCC中执行", command=self.run_in_dcc)
+        if exec_mode in ['standalone', 'both']:
+            menu.add_command(label="🖥️ 独立运行", command=self.run_standalone)
+        
+        menu.add_separator()
+        
+        # 分组设置子菜单
+        group_menu = tk.Menu(menu, tearoff=0)
+        current_groups = self.get_tool_groups(item)
+        
+        for g in self.tool_groups.get("groups", []):
+            if g["id"] == "all":
+                continue
+            is_checked = g["id"] in current_groups
+            group_menu.add_checkbutton(
+                label=f"{g['icon']} {g['name']}",
+                command=lambda gid=g["id"], tid=item: self._toggle_tool_group(tid, gid),
+                variable=tk.BooleanVar(value=is_checked)
+            )
+        
+        menu.add_cascade(label="📂 设置分组", menu=group_menu)
+        
+        menu.add_separator()
+        menu.add_command(label="📋 复制路径", 
+                        command=lambda: self.root.clipboard_append(tool_info.get('path', '')))
+        menu.add_command(label="📁 打开所在文件夹", 
+                        command=lambda: self._open_tool_folder(tool_info))
+        
+        # 显示菜单
+        try:
+            menu.tk_popup(event.x_root, event.y_root)
+        finally:
+            menu.grab_release()
+    
+    def _toggle_tool_group(self, tool_id, group_id):
+        """切换工具的分组"""
+        if "tool_assignments" not in self.tool_groups:
+            self.tool_groups["tool_assignments"] = {}
+        
+        current = self.tool_groups["tool_assignments"].get(tool_id, [])
+        
+        # 如果没有自定义分配，从工具的tags获取
+        if not current and hasattr(self, 'tools_cache') and tool_id in self.tools_cache:
+            current = list(self.tools_cache[tool_id].get('tags', []))
+        
+        if group_id in current:
+            current.remove(group_id)
+        else:
+            current.append(group_id)
+        
+        self.tool_groups["tool_assignments"][tool_id] = current
+        self._save_tool_groups_local()
+        
+        self.log_message(f"✓ 工具分组已更新")
+    
+    def _open_tool_folder(self, tool_info):
+        """打开工具所在文件夹"""
+        tool_path = Path(tool_info.get('path', ''))
+        if tool_path.exists():
+            if sys.platform == 'win32':
+                os.startfile(tool_path)
+            elif sys.platform == 'darwin':
+                subprocess.run(['open', str(tool_path)])
+            else:
+                subprocess.run(['xdg-open', str(tool_path)])
+    
+    def _show_group_manager(self):
+        """显示分组管理对话框"""
+        dialog = tk.Toplevel(self.root)
+        dialog.title("分组管理")
+        dialog.geometry("400x450")
+        dialog.transient(self.root)
+        dialog.grab_set()
+        
+        # 居中显示
+        dialog.update_idletasks()
+        x = (dialog.winfo_screenwidth() - 400) // 2
+        y = (dialog.winfo_screenheight() - 450) // 2
+        dialog.geometry(f"400x450+{x}+{y}")
+        
+        # 标题
+        ttk.Label(dialog, text="分组管理", font=('Arial', 12, 'bold')).pack(pady=10)
+        
+        # 分组列表
+        list_frame = ttk.LabelFrame(dialog, text="现有分组", padding="10")
+        list_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=10)
+        
+        listbox = tk.Listbox(list_frame, height=10)
+        listbox.pack(fill=tk.BOTH, expand=True)
+        
+        for g in self.tool_groups.get("groups", []):
+            suffix = " (自定义)" if g.get("is_custom") else ""
+            listbox.insert(tk.END, f"{g['icon']} {g['name']}{suffix}")
+        
+        # 添加分组区域
+        add_frame = ttk.LabelFrame(dialog, text="添加自定义分组", padding="10")
+        add_frame.pack(fill=tk.X, padx=20, pady=10)
+        
+        ttk.Label(add_frame, text="名称:").grid(row=0, column=0, sticky=tk.W)
+        name_entry = ttk.Entry(add_frame, width=20)
+        name_entry.grid(row=0, column=1, padx=5, columnspan=2)
+        
+        ttk.Label(add_frame, text="图标:").grid(row=1, column=0, sticky=tk.W, pady=5)
+        
+        # 图标选择区域
+        icon_var = tk.StringVar(value="📁")
+        icon_display = ttk.Label(add_frame, textvariable=icon_var, font=('', 16), width=3)
+        icon_display.grid(row=1, column=1, sticky=tk.W, padx=5)
+        
+        # 可选图标列表
+        available_icons = [
+            "📁", "📂", "🎨", "🎬", "🔧", "⚙️", "🛠️", "📐",
+            "🎮", "🎯", "💡", "⭐", "🔥", "💎", "🎪", "🎭",
+            "📊", "📈", "🗂️", "📋", "✨", "🌟", "💫", "🚀",
+            "🔨", "🔩", "⚡", "🎵", "🎶", "🖼️", "🖌️", "✏️"
+        ]
+        
+        def show_icon_picker():
+            """显示图标选择器"""
+            picker = tk.Toplevel(dialog)
+            picker.title("选择图标")
+            picker.geometry("300x200")
+            picker.transient(dialog)
+            picker.grab_set()
+            
+            # 居中显示
+            picker.update_idletasks()
+            px = dialog.winfo_x() + (dialog.winfo_width() - 300) // 2
+            py = dialog.winfo_y() + (dialog.winfo_height() - 200) // 2
+            picker.geometry(f"+{px}+{py}")
+            
+            ttk.Label(picker, text="点击选择图标:").pack(pady=5)
+            
+            # 图标网格
+            icons_frame = ttk.Frame(picker)
+            icons_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+            
+            row, col = 0, 0
+            max_cols = 8
+            
+            for icon in available_icons:
+                btn = tk.Button(
+                    icons_frame, 
+                    text=icon, 
+                    font=('', 14),
+                    width=2,
+                    relief=tk.FLAT,
+                    command=lambda i=icon: [icon_var.set(i), picker.destroy()]
+                )
+                btn.grid(row=row, column=col, padx=2, pady=2)
+                col += 1
+                if col >= max_cols:
+                    col = 0
+                    row += 1
+            
+            ttk.Button(picker, text="取消", command=picker.destroy).pack(pady=5)
+        
+        ttk.Button(add_frame, text="选择...", width=6, command=show_icon_picker).grid(row=1, column=2, padx=5)
+        
+        def add_group():
+            name = name_entry.get().strip()
+            icon = icon_var.get() or "📁"
+            
+            if not name:
+                messagebox.showwarning("提示", "请输入分组名称")
+                return
+            
+            new_group = {"id": name.lower().replace(" ", "_"), "name": name, "icon": icon, "is_custom": True}
+            self.tool_groups["groups"].append(new_group)
+            self._save_tool_groups_local()
+            
+            # 更新列表
+            listbox.insert(tk.END, f"{icon} {name} (自定义)")
+            name_entry.delete(0, tk.END)
+            icon_var.set("📁")
+            
+            # 更新所有下拉框
+            self._update_all_group_comboboxes()
+            
+            self.log_message(f"✓ 已添加自定义分组: {name}")
+        
+        ttk.Button(add_frame, text="添加", command=add_group).grid(row=2, column=0, columnspan=3, pady=(10, 0))
+        
+        # 关闭按钮
+        ttk.Button(dialog, text="关闭", command=dialog.destroy).pack(pady=10)
+    
+    def _update_all_group_comboboxes(self):
+        """更新所有分组下拉框的选项"""
+        group_values = [f"{g['icon']} {g['name']}" for g in self.tool_groups.get("groups", [])]
+        for combo in self.group_combos.values():
+            current = combo.get()
+            combo['values'] = group_values
+            if current in group_values:
+                combo.set(current)
     
     def _setup_log_tags(self):
         """设置日志文本的颜色标签"""
