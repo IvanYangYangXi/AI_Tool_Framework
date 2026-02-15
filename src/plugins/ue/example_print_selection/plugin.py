@@ -120,8 +120,8 @@ class PrintSelection:
             if self._connected:
                 import unreal
                 # 获取内容浏览器选择的资产
-                utility = unreal.EditorUtilityLibrary()
-                selected = utility.get_selected_assets()
+                # EditorUtilityLibrary 是静态类，直接调用方法
+                selected = unreal.EditorUtilityLibrary.get_selected_assets()
                 return [asset.get_name() for asset in selected]
             else:
                 # 模拟模式
@@ -158,17 +158,32 @@ def run_in_unreal():
     return result
 
 
-if __name__ == "__main__":
-    print("\n" + "=" * 60)
-    print("Unreal Engine 打印选择资产工具 - 测试模式")
-    print("=" * 60)
-    
-    plugin = PrintSelection()
-    info = plugin.get_info()
-    print(f"\n插件名称: {info['name']}")
-    print(f"版本: {info['version']}")
-    print(f"描述: {info['description']}")
-    
-    print("\n执行测试（模拟模式）:")
-    result = plugin.execute()
-    print(f"\n返回结果: {result}")
+# 检测是否在UE环境中
+def _is_in_unreal():
+    try:
+        import unreal
+        return True
+    except ImportError:
+        return False
+
+
+# 自动执行逻辑
+if _is_in_unreal():
+    # 在UE环境中，直接执行
+    run_in_unreal()
+else:
+    # 本地测试模式（不在UE环境中）
+    if __name__ == "__main__":
+        print("\n" + "=" * 60)
+        print("Unreal Engine 打印选择资产工具 - 本地测试模式")
+        print("=" * 60)
+        
+        plugin = PrintSelection()
+        info = plugin.get_info()
+        print(f"\n插件名称: {info['name']}")
+        print(f"版本: {info['version']}")
+        print(f"描述: {info['description']}")
+        
+        print("\n执行测试（模拟模式）:")
+        result = plugin.execute()
+        print(f"\n返回结果: {result}")

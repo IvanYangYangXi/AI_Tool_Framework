@@ -1,0 +1,9 @@
+{
+  "_comment": "这是本地配置文件的示例模板，实际的 local_settings.json 不会上传到 Git",
+  "ue_project_paths": [],
+  "last_ue_project": "",
+  "maya_port": 7001,
+  "max_port": 9001,
+  "blender_port": 8001,
+  "window_geometry": ""
+}

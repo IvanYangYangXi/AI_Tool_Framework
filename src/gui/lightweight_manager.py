@@ -22,17 +22,96 @@ class LightweightDCCManager:
     - 提供UI界面管理脚本工具
     - 通过Git更新/管理后端脚本
     - 连接DCC软件执行脚本
-    - 脚本代码通过Git管理，不打包到exe中
     """
+    
+    # 本地配置文件名
+    LOCAL_SETTINGS_FILE = "local_settings.json"
     
     def __init__(self):
         self.root = tk.Tk()
         self.git_repo_path = self._get_git_repo_path()
         self.connected_dcc = None
         self.is_git_up_to_date = False
+        
+        # 确保本地目录结构存在
+        self._ensure_local_directories()
+        
+        # 加载本地配置
+        self.local_settings = self._load_local_settings()
+        
         self.setup_ui()
         # 启动时自动检查Git更新
         self._startup_git_check()
+    
+    def _get_documents_base_dir(self) -> Path:
+        """获取我的文档下的DCC Tool Manager目录"""
+        import os
+        return Path(os.path.expanduser("~")) / "Documents" / "DCC_Tool_Manager"
+    
+    def _ensure_local_directories(self):
+        """确保本地目录结构存在"""
+        base_dir = self._get_documents_base_dir()
+        
+        # 创建配置目录
+        (base_dir / "config").mkdir(parents=True, exist_ok=True)
+        
+        # 创建本地脚本目录结构
+        for category in ['maya', 'max', 'blender', 'ue']:
+            (base_dir / "local_scripts" / category).mkdir(parents=True, exist_ok=True)
+    
+    def _get_local_settings_path(self) -> Path:
+        """获取本地配置文件路径（我的文档/DCC_Tool_Manager/config/）"""
+        return self._get_documents_base_dir() / "config" / self.LOCAL_SETTINGS_FILE
+    
+    def _load_local_settings(self) -> dict:
+        """
+        加载本地配置
+        配置文件存储在 我的文档/DCC_Tool_Manager/config/local_settings.json
+        """
+        settings_path = self._get_local_settings_path()
+        
+        default_settings = {
+            "ue_project_paths": [],  # 用户配置过的UE项目路径列表
+            "last_ue_project": "",   # 最后使用的UE项目路径
+            "maya_port": 7001,
+            "max_port": 9001,
+            "blender_port": 8001,
+            "window_geometry": "",   # 窗口位置和大小
+        }
+        
+        try:
+            if settings_path.exists():
+                with open(settings_path, 'r', encoding='utf-8') as f:
+                    loaded = json.load(f)
+                    # 合并默认值和已保存的值
+                    default_settings.update(loaded)
+        except Exception as e:
+            print(f"加载本地配置失败: {e}")
+        
+        return default_settings
+    
+    def _save_local_settings(self):
+        """保存本地配置"""
+        settings_path = self._get_local_settings_path()
+        
+        try:
+            # 确保目录存在
+            settings_path.parent.mkdir(parents=True, exist_ok=True)
+            
+            with open(settings_path, 'w', encoding='utf-8') as f:
+                json.dump(self.local_settings, f, indent=2, ensure_ascii=False)
+        except Exception as e:
+            print(f"保存本地配置失败: {e}")
+    
+    def _add_ue_project_path(self, path: str):
+        """添加UE项目路径到配置"""
+        if path and path not in self.local_settings.get("ue_project_paths", []):
+            if "ue_project_paths" not in self.local_settings:
+                self.local_settings["ue_project_paths"] = []
+            self.local_settings["ue_project_paths"].append(path)
+        
+        self.local_settings["last_ue_project"] = path
+        self._save_local_settings()
         
     def _get_git_repo_path(self):
         """
@@ -221,8 +300,8 @@ class LightweightDCCManager:
     def setup_ui(self):
         """设置轻量级用户界面"""
         self.root.title("🎨 DCC工具管理器 - 轻量版")
-        self.root.geometry("900x700")
-        self.root.minsize(800, 600)
+        self.root.geometry("950x700")
+        self.root.minsize(900, 600)
         
         # 创建主框架
         main_frame = ttk.Frame(self.root, padding="10")
@@ -294,18 +373,18 @@ class LightweightDCCManager:
         self.tools_notebook.add(frame, text=category_name)
         
         # 工具列表
-        columns = ('name', 'version', 'status')
+        columns = ('version', 'source', 'status')
         tree = ttk.Treeview(frame, columns=columns, show='tree headings', height=12)
         
         tree.heading('#0', text='工具名称')
-        tree.heading('name', text='名称')
         tree.heading('version', text='版本')
+        tree.heading('source', text='来源')
         tree.heading('status', text='状态')
         
-        tree.column('#0', width=180)
-        tree.column('name', width=120)
-        tree.column('version', width=80)
-        tree.column('status', width=80)
+        tree.column('#0', width=200)
+        tree.column('version', width=60)
+        tree.column('source', width=50)
+        tree.column('status', width=50)
         
         # 滚动条
         scrollbar = ttk.Scrollbar(frame, orient=tk.VERTICAL, command=tree.yview)
@@ -379,21 +458,27 @@ class LightweightDCCManager:
                                   command=self.test_parameters)
         self.test_btn.pack(side=tk.LEFT, fill=tk.X, expand=True)
         
-        # DCC连接控制
+        # DCC连接控制 - 使用两行布局避免按钮被裁切
         dcc_frame = ttk.Frame(control_frame)
         dcc_frame.pack(fill=tk.X, pady=(10, 0))
         
-        ttk.Label(dcc_frame, text="DCC连接:").pack(side=tk.LEFT)
-        self.dcc_combo = ttk.Combobox(dcc_frame, 
+        # 第一行：下拉框和主要按钮
+        dcc_row1 = ttk.Frame(dcc_frame)
+        dcc_row1.pack(fill=tk.X)
+        
+        ttk.Label(dcc_row1, text="DCC连接:").pack(side=tk.LEFT)
+        self.dcc_combo = ttk.Combobox(dcc_row1, 
                                      values=["Maya", "3ds Max", "Blender", "Unreal Engine"],
-                                     state="readonly")
+                                     state="readonly", width=15)
         self.dcc_combo.pack(side=tk.LEFT, padx=(5, 10))
         self.dcc_combo.set("选择DCC软件")
         
-        ttk.Button(dcc_frame, text="🔗 连接", 
-                  command=self.connect_dcc).pack(side=tk.LEFT, padx=(0, 5))
-        ttk.Button(dcc_frame, text="끊 断开", 
-                  command=self.disconnect_dcc).pack(side=tk.LEFT)
+        ttk.Button(dcc_row1, text="🔗连接", width=6,
+                  command=self.connect_dcc).pack(side=tk.LEFT, padx=(0, 3))
+        ttk.Button(dcc_row1, text="⚡断开", width=6,
+                  command=self.disconnect_dcc).pack(side=tk.LEFT, padx=(0, 3))
+        ttk.Button(dcc_row1, text="⚙️设置", width=6,
+                  command=self._show_dcc_settings).pack(side=tk.LEFT)
     
     def create_control_panel(self, parent):
         """创建底部控制面板"""
@@ -448,19 +533,31 @@ class LightweightDCCManager:
         """刷新工具列表"""
         self.log_message("正在刷新工具列表...")
         
-        # 清空现有列表
+        # 清空现有列表和缓存
         for category in ['maya', 'max', 'blender', 'ue']:
             tree = getattr(self, f"{category}_tree")
             for item in tree.get_children():
                 tree.delete(item)
+        self.tools_cache = {}
         
-        # 从Git仓库扫描工具
+        # 从Git仓库扫描共享工具
         self.scan_tools_from_git()
+        
+        # 从本地目录扫描本地工具
+        self.scan_tools_from_local()
         
         self.log_message("✓ 工具列表刷新完成")
     
+    def get_local_scripts_dir(self) -> Path:
+        """获取本地脚本目录（我的文档/DCC_Tool_Manager/local_scripts/）"""
+        return self._get_documents_base_dir() / "local_scripts"
+    
+    def get_local_config_dir(self) -> Path:
+        """获取本地配置目录（我的文档/DCC_Tool_Manager/config/）"""
+        return self._get_documents_base_dir() / "config"
+    
     def scan_tools_from_git(self):
-        """从Git仓库扫描工具"""
+        """从Git仓库扫描共享工具"""
         try:
             plugins_dir = self.git_repo_path / "src" / "plugins"
             
@@ -475,13 +572,48 @@ class LightweightDCCManager:
             for category, category_path in tool_categories.items():
                 if category_path.exists():
                     tree = getattr(self, f"{category}_tree")
-                    self.load_tools_from_directory(category_path, tree, category)
+                    self.load_tools_from_directory(category_path, tree, category, source="共享")
                     
         except Exception as e:
-            self.log_message(f"✗ 扫描工具失败: {e}")
+            self.log_message(f"✗ 扫描共享工具失败: {e}")
     
-    def load_tools_from_directory(self, directory, tree, category):
-        """从目录加载工具"""
+    def scan_tools_from_local(self):
+        """从本地目录扫描本地工具"""
+        try:
+            local_scripts_dir = self.get_local_scripts_dir()
+            
+            # 确保本地目录存在（已在初始化时调用）
+            self._ensure_local_directories()
+            
+            # 扫描各个类型的本地工具
+            tool_categories = {
+                'maya': local_scripts_dir / 'maya',
+                'max': local_scripts_dir / 'max', 
+                'blender': local_scripts_dir / 'blender',
+                'ue': local_scripts_dir / 'ue'
+            }
+            
+            for category, category_path in tool_categories.items():
+                if category_path.exists():
+                    tree = getattr(self, f"{category}_tree")
+                    self.load_tools_from_directory(category_path, tree, category, source="本地", is_local=True)
+                    
+        except Exception as e:
+            self.log_message(f"✗ 扫描本地工具失败: {e}")
+    
+    def load_tools_from_directory(self, directory, tree, category, source="共享", is_local=False):
+        """从目录加载工具
+        
+        Args:
+            directory: 工具目录路径
+            tree: 树形视图控件
+            category: 工具分类 (maya/max/blender/ue)
+            source: 来源标识 (共享/本地)
+            is_local: 是否为本地工具
+        """
+        if not directory.exists():
+            return
+            
         for tool_dir in directory.iterdir():
             if tool_dir.is_dir():
                 config_file = tool_dir / "config.json"
@@ -490,25 +622,28 @@ class LightweightDCCManager:
                         with open(config_file, 'r', encoding='utf-8') as f:
                             config = json.load(f)
                         
+                        # 本地工具使用 local_ 前缀避免ID冲突
+                        id_prefix = "local_" if is_local else ""
+                        
                         tool_info = {
-                            'id': f"{category}_{tool_dir.name}",
+                            'id': f"{id_prefix}{category}_{tool_dir.name}",
                             'name': config['plugin']['name'],
                             'version': config['plugin']['version'],
                             'description': config['plugin'].get('description', ''),
-                            'path': str(tool_dir.relative_to(self.git_repo_path)),
+                            'path': str(tool_dir),  # 本地工具使用绝对路径
                             'parameters': config.get('parameters', {}),
-                            'status': '可用'
+                            'status': '可用',
+                            'source': source,
+                            'is_local': is_local
                         }
                         
                         # 添加到树形视图
                         tree.insert('', 'end',
                                   iid=tool_info['id'],
                                   text=tool_info['name'],
-                                  values=(tool_info['name'], tool_info['version'], tool_info['status']))
+                                  values=(tool_info['version'], tool_info['source'], tool_info['status']))
                         
                         # 保存工具信息
-                        if not hasattr(self, 'tools_cache'):
-                            self.tools_cache = {}
                         self.tools_cache[tool_info['id']] = tool_info
                         
                     except Exception as e:
@@ -632,6 +767,12 @@ class LightweightDCCManager:
                     success, message = self._connect_to_max()
                 elif selected_dcc == "Blender":
                     success, message = self._connect_to_blender()
+                elif selected_dcc == "Unreal Engine":
+                    success, message = self._connect_to_ue()
+                    # UE特殊处理：如果需要设置，弹出设置对话框
+                    if not success and message == "NEED_SETUP":
+                        self.root.after(0, self._show_ue_setup_dialog)
+                        return
                 else:
                     success, message = False, "暂不支持该DCC软件"
                 
@@ -1667,6 +1808,541 @@ print('Socket server is running...')'''
         except Exception as e:
             return False, f"发送失败: {str(e)}"
     
+    # ==================== Unreal Engine 连接相关方法 ====================
+    
+    def _connect_to_ue(self, host="127.0.0.1", port=30010):
+        """
+        连接到Unreal Engine
+        
+        流程：
+        1. 检查监听器是否已配置并运行
+        2. 如果监听器未运行，弹出设置对话框引导用户配置
+        3. 连接成功后可通过文件交换方式执行脚本
+        
+        Returns:
+            tuple: (success: bool, message: str)
+        """
+        import tempfile
+        import time
+        
+        # 检查监听器是否在运行（通过文件测试）
+        listener_running = self._check_ue_listener_running()
+        
+        if listener_running:
+            # 监听器已运行，直接连接
+            self.ue_host = host
+            self.ue_port = port
+            self.ue_connected = True
+            return True, "✓ 已连接到Unreal Engine（监听器运行中）"
+        else:
+            # 监听器未运行，需要显示设置对话框
+            # 返回特殊状态码让UI层处理
+            return False, "NEED_SETUP"
+    
+    def _check_ue_listener_running(self) -> bool:
+        """
+        检查UE监听器是否正在运行
+        通过写入测试文件并等待监听器处理来检测
+        """
+        import tempfile
+        import time
+        
+        try:
+            script_exchange_dir = Path(tempfile.gettempdir()) / "DCC_UE_Scripts"
+            pending_dir = script_exchange_dir / "pending"
+            pending_dir.mkdir(parents=True, exist_ok=True)
+            
+            # 创建一个测试文件（空操作脚本）
+            test_file = pending_dir / f"_connection_test_{int(time.time()*1000)}.py"
+            test_file.write_text("# Connection test\npass\n", encoding='utf-8')
+            
+            # 等待监听器处理（监听器每500ms检查一次）
+            time.sleep(0.7)
+            
+            # 如果文件被删除，说明监听器在运行
+            if not test_file.exists():
+                return True
+            else:
+                # 清理测试文件
+                try:
+                    test_file.unlink()
+                except:
+                    pass
+                return False
+                
+        except Exception as e:
+            return False
+    
+    def _show_ue_setup_dialog(self):
+        """显示UE监听器设置对话框"""
+        dialog = tk.Toplevel(self.root)
+        dialog.title("🔧 Unreal Engine 设置")
+        dialog.geometry("700x720")
+        dialog.resizable(True, True)
+        dialog.transient(self.root)
+        dialog.grab_set()
+        
+        # 居中显示
+        dialog.update_idletasks()
+        x = (dialog.winfo_screenwidth() - 700) // 2
+        y = (dialog.winfo_screenheight() - 720) // 2
+        dialog.geometry(f"700x720+{x}+{y}")
+        
+        # 创建可滚动的内容区域
+        canvas = tk.Canvas(dialog)
+        scrollbar = ttk.Scrollbar(dialog, orient="vertical", command=canvas.yview)
+        scrollable_frame = ttk.Frame(canvas, padding="20")
+        
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+        
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        
+        scrollbar.pack(side="right", fill="y")
+        canvas.pack(side="left", fill="both", expand=True)
+        
+        content = scrollable_frame
+        
+        # 标题
+        ttk.Label(
+            content,
+            text="🎮 Unreal Engine 监听器配置",
+            font=('Arial', 14, 'bold')
+        ).pack(pady=(0, 15))
+        
+        # ========== 自动配置区域（推荐，放在最前面）==========
+        auto_frame = ttk.LabelFrame(content, text="🚀 一键自动配置（推荐）", padding="15")
+        auto_frame.pack(fill=tk.X, pady=(0, 15))
+        
+        auto_text = """配置后监听器会在UE启动时自动运行，无需手动操作！
+脚本会部署到UE项目的 Content/Python 目录，团队成员获取项目后即可直接使用。"""
+        
+        ttk.Label(
+            auto_frame,
+            text=auto_text,
+            font=('Arial', 9),
+            justify='left',
+            foreground='#006400'
+        ).pack(anchor='w')
+        
+        # UE项目路径输入
+        path_frame = ttk.Frame(auto_frame)
+        path_frame.pack(fill=tk.X, pady=(10, 5))
+        
+        ttk.Label(path_frame, text="UE项目路径:").pack(side=tk.LEFT)
+        
+        # 获取已配置的项目路径
+        saved_paths = self.local_settings.get("ue_project_paths", [])
+        last_path = self.local_settings.get("last_ue_project", "")
+        
+        ue_project_var = tk.StringVar(value=last_path)
+        
+        if saved_paths:
+            # 使用Combobox显示历史路径
+            ue_project_combo = ttk.Combobox(path_frame, textvariable=ue_project_var, 
+                                           values=saved_paths, width=42)
+            ue_project_combo.pack(side=tk.LEFT, padx=(5, 5), fill=tk.X, expand=True)
+        else:
+            # 没有历史路径，使用Entry
+            ue_project_entry = ttk.Entry(path_frame, textvariable=ue_project_var, width=45)
+            ue_project_entry.pack(side=tk.LEFT, padx=(5, 5), fill=tk.X, expand=True)
+        
+        def browse_ue_project():
+            from tkinter import filedialog
+            folder = filedialog.askdirectory(title="选择UE项目根目录（包含.uproject文件的目录）")
+            if folder:
+                ue_project_var.set(folder)
+        
+        ttk.Button(path_frame, text="浏览...", command=browse_ue_project, width=8).pack(side=tk.LEFT)
+        
+        # 按钮行
+        btn_frame = ttk.Frame(auto_frame)
+        btn_frame.pack(fill=tk.X, pady=(10, 0))
+        
+        # 自动配置按钮
+        def do_auto_setup():
+            ue_path = ue_project_var.get().strip()
+            if not ue_path:
+                messagebox.showerror("错误", "请先选择UE项目路径")
+                return
+            
+            success, message = self._setup_ue_auto_listener(ue_path)
+            if success:
+                messagebox.showinfo("配置成功", message)
+            else:
+                messagebox.showerror("配置失败", message)
+        
+        ttk.Button(
+            btn_frame,
+            text="🔧 一键配置/更新",
+            command=do_auto_setup,
+            width=18
+        ).pack(side=tk.LEFT, padx=(0, 10))
+        
+        # 更新所有已配置项目的按钮
+        def update_all_projects():
+            paths = self.local_settings.get("ue_project_paths", [])
+            if not paths:
+                messagebox.showinfo("提示", "没有已配置的UE项目")
+                return
+            
+            updated = 0
+            failed = 0
+            for path in paths:
+                success, _ = self._setup_ue_auto_listener(path)
+                if success:
+                    updated += 1
+                else:
+                    failed += 1
+            
+            messagebox.showinfo("更新完成", f"已更新 {updated} 个项目\n失败 {failed} 个")
+        
+        if saved_paths:
+            ttk.Button(
+                btn_frame,
+                text="🔄 更新所有项目",
+                command=update_all_projects,
+                width=15
+            ).pack(side=tk.LEFT)
+        
+        # 分隔线
+        ttk.Separator(content, orient='horizontal').pack(fill=tk.X, pady=15)
+        
+        # ========== 手动启动区域 ==========
+        manual_frame = ttk.LabelFrame(content, text="📋 手动启动（可选）", padding="15")
+        manual_frame.pack(fill=tk.X, pady=(0, 15))
+        
+        # 获取监听器脚本路径（使用正斜杠）
+        listener_path = Path(__file__).parent.parent / "plugins" / "ue" / "ue_script_listener.py"
+        listener_path_str = str(listener_path.resolve()).replace('\\', '/')
+        
+        steps_text = f"""如果不想配置自动启动，也可以每次手动启动监听器：
+
+1. 在UE中打开 Output Log (Window → Developer Tools → Output Log)
+2. 在底部命令行执行以下命令：
+
+   py "{listener_path_str}"
+
+3. 看到 "[UE Listener] Started" 表示成功"""
+        
+        ttk.Label(
+            manual_frame,
+            text=steps_text,
+            font=('Consolas', 9),
+            justify='left'
+        ).pack(anchor='w')
+        
+        # 复制命令按钮
+        def copy_listener_cmd():
+            self.root.clipboard_clear()
+            self.root.clipboard_append(f'py "{listener_path_str}"')
+            messagebox.showinfo("已复制", "命令已复制到剪贴板！\n在UE Output Log中粘贴执行")
+        
+        ttk.Button(
+            manual_frame,
+            text="📋 复制启动命令",
+            command=copy_listener_cmd,
+            width=18
+        ).pack(pady=(10, 0), anchor='w')
+        
+        # ========== 监听器控制命令 ==========
+        cmd_frame = ttk.LabelFrame(content, text="🎛️ 监听器控制命令", padding="15")
+        cmd_frame.pack(fill=tk.X, pady=(0, 15))
+        
+        cmd_text = """查看状态: py -c "import ue_script_listener; ue_script_listener.status()"
+停止监听: py -c "import ue_script_listener; ue_script_listener.stop()"
+重新启动: py -c "import ue_script_listener; ue_script_listener.start()"
+清空队列: py -c "import ue_script_listener; ue_script_listener.clear_pending()" """
+        
+        ttk.Label(
+            cmd_frame,
+            text=cmd_text,
+            font=('Consolas', 8),
+            justify='left',
+            foreground='gray'
+        ).pack(anchor='w')
+        
+        # ========== 工作原理 ==========
+        how_frame = ttk.LabelFrame(content, text="💡 工作原理", padding="15")
+        how_frame.pack(fill=tk.X, pady=(0, 15))
+        
+        how_text = """监听器采用文件交换模式（绕过Remote Control API限制）：
+
+1. UI面板将脚本保存到: %TEMP%/DCC_UE_Scripts/pending/
+2. UE中的监听器每500ms检查该目录
+3. 发现新脚本时自动执行
+4. 执行完成后移动到 executed/ 目录"""
+        
+        ttk.Label(
+            how_frame,
+            text=how_text,
+            font=('Arial', 9),
+            justify='left'
+        ).pack(anchor='w')
+        
+        # 按钮区域
+        button_frame = ttk.Frame(content)
+        button_frame.pack(pady=(10, 0))
+        
+        ttk.Button(
+            button_frame,
+            text="关闭",
+            command=dialog.destroy,
+            width=15
+        ).pack(side=tk.LEFT)
+    
+    def _setup_ue_auto_listener(self, ue_project_path: str) -> tuple:
+        """
+        配置UE项目自动启动监听器
+        
+        将监听器脚本部署到UE项目的 Content/Python 目录
+        如果已存在 init_unreal.py，则智能合并代码
+        同时保存项目路径到本地配置
+        
+        Args:
+            ue_project_path: UE项目根目录路径
+            
+        Returns:
+            tuple: (success: bool, message: str)
+        """
+        try:
+            ue_path = Path(ue_project_path)
+            
+            # 验证是否是有效的UE项目目录
+            uproject_files = list(ue_path.glob("*.uproject"))
+            if not uproject_files:
+                return False, f"在 {ue_project_path} 中未找到 .uproject 文件\n请确保选择了正确的UE项目根目录"
+            
+            # 创建 Content/Python 目录
+            python_dir = ue_path / "Content" / "Python"
+            python_dir.mkdir(parents=True, exist_ok=True)
+            
+            # 复制监听器脚本（总是更新到最新版本）
+            source_listener = Path(__file__).parent.parent / "plugins" / "ue" / "ue_script_listener.py"
+            dest_listener = python_dir / "ue_script_listener.py"
+            
+            if source_listener.exists():
+                import shutil
+                shutil.copy2(source_listener, dest_listener)
+            else:
+                return False, f"源文件不存在: {source_listener}"
+            
+            # 处理 init_unreal.py
+            init_file = python_dir / "init_unreal.py"
+            
+            # 生成要添加的启动代码
+            startup_code = '''
+# ============================================================
+# DCC Tool Manager - UE Listener Auto-Start
+# This code was added by DCC Tool Manager
+# ============================================================
+def _start_dcc_listener():
+    """启动 DCC Tool Manager 监听器"""
+    try:
+        import ue_script_listener
+        ue_script_listener.start()
+        try:
+            import unreal
+            unreal.log("[DCC Tool Manager] Listener started successfully")
+        except:
+            pass
+    except Exception as e:
+        try:
+            import unreal
+            unreal.log_warning(f"[DCC Tool Manager] Failed to start listener: {e}")
+        except:
+            pass
+
+# 自动启动监听器
+_start_dcc_listener()
+# ============================================================
+'''
+            
+            is_update = False
+            if init_file.exists():
+                # 读取现有内容
+                with open(init_file, 'r', encoding='utf-8') as f:
+                    existing_content = f.read()
+                
+                # 检查是否已经包含我们的代码
+                if '_start_dcc_listener' in existing_content:
+                    is_update = True
+                else:
+                    # 追加代码到现有文件
+                    with open(init_file, 'a', encoding='utf-8') as f:
+                        f.write('\n' + startup_code)
+            else:
+                # 创建新的 init_unreal.py
+                full_init_code = '''"""
+UE Python Startup Script
+Auto-generated by DCC Tool Manager
+"""
+''' + startup_code
+                
+                with open(init_file, 'w', encoding='utf-8') as f:
+                    f.write(full_init_code)
+            
+            # 保存UE项目路径到本地配置
+            self._add_ue_project_path(ue_project_path)
+            
+            if is_update:
+                return True, f"✓ 监听器脚本已更新到最新版本\n\n文件位置:\n{dest_listener}\n\n重启UE即可生效"
+            else:
+                return True, f"✓ 已配置自动启动监听器\n\n文件位置:\n{dest_listener}\n\n重启UE即可生效"
+                
+        except Exception as e:
+            return False, f"配置失败: {str(e)}"
+    
+    def _retry_ue_connection(self, dialog):
+        """重试UE连接"""
+        dialog.destroy()
+        self.connect_dcc()
+    
+    def _show_dcc_settings(self):
+        """显示DCC设置对话框"""
+        selected_dcc = self.dcc_combo.get().lower()
+        
+        if "unreal" in selected_dcc:
+            self._show_ue_setup_dialog()
+        elif "maya" in selected_dcc:
+            self._show_maya_settings_dialog()
+        elif "max" in selected_dcc:
+            self._show_max_settings_dialog()
+        elif "blender" in selected_dcc:
+            self._show_blender_settings_dialog()
+        else:
+            messagebox.showinfo("提示", "请先选择要设置的DCC软件")
+    
+    def _show_maya_settings_dialog(self):
+        """显示Maya设置对话框"""
+        messagebox.showinfo(
+            "Maya 设置",
+            "Maya 通过 CommandPort 连接，默认端口 7001\n\n"
+            "确保在 Maya 中执行以下命令启用 CommandPort:\n"
+            "import maya.cmds as cmds\n"
+            "cmds.commandPort(name=':7001', sourceType='python')"
+        )
+    
+    def _show_max_settings_dialog(self):
+        """显示3ds Max设置对话框"""
+        messagebox.showinfo(
+            "3ds Max 设置",
+            "3ds Max 通过 Socket 连接，默认端口 9001\n\n"
+            "需要在 3ds Max 中启用 Python 服务器"
+        )
+    
+    def _show_blender_settings_dialog(self):
+        """显示Blender设置对话框"""
+        messagebox.showinfo(
+            "Blender 设置",
+            "Blender 通过 Socket 连接，默认端口 8001\n\n"
+            "需要安装并启用 Blender 远程执行插件"
+        )
+    
+    def _send_to_ue(self, python_code: str) -> tuple:
+        """
+        在Unreal Engine中执行Python代码
+        
+        直接使用文件交换模式（最稳定可靠的方法）
+        会等待执行结果并返回UE的输出
+        
+        Args:
+            python_code: 要执行的Python代码
+            
+        Returns:
+            tuple: (success: bool, result: str, output: str)
+        """
+        import tempfile
+        import time
+        
+        # 脚本交换目录
+        script_exchange_dir = Path(tempfile.gettempdir()) / "DCC_UE_Scripts"
+        pending_dir = script_exchange_dir / "pending"
+        result_dir = script_exchange_dir / "results"
+        pending_dir.mkdir(parents=True, exist_ok=True)
+        result_dir.mkdir(parents=True, exist_ok=True)
+        
+        # 生成唯一文件名
+        timestamp = int(time.time() * 1000)
+        script_name = f"script_{timestamp}.py"
+        script_file = pending_dir / script_name
+        result_file = result_dir / f"script_{timestamp}.result.json"
+        
+        # 清理旧的结果文件（如果存在）
+        if result_file.exists():
+            try:
+                result_file.unlink()
+            except:
+                pass
+        
+        try:
+            # 保存脚本到pending目录
+            with open(script_file, 'w', encoding='utf-8') as f:
+                f.write(python_code)
+            
+            self.log_message(f"脚本已发送，等待UE执行...")
+            
+            # 等待监听器处理并返回结果（最多等待5秒）
+            max_wait = 5.0
+            wait_interval = 0.3
+            elapsed = 0
+            
+            while elapsed < max_wait:
+                time.sleep(wait_interval)
+                elapsed += wait_interval
+                
+                # 检查脚本是否被处理
+                if not script_file.exists():
+                    # 脚本已被处理，等待结果文件
+                    time.sleep(0.2)  # 额外等待结果写入
+                    
+                    # 读取结果
+                    if result_file.exists():
+                        try:
+                            with open(result_file, 'r', encoding='utf-8') as f:
+                                result_data = json.load(f)
+                            
+                            success = result_data.get("success", False)
+                            output = result_data.get("output", "")
+                            error = result_data.get("error", "")
+                            
+                            # 清理结果文件
+                            try:
+                                result_file.unlink()
+                            except:
+                                pass
+                            
+                            if success:
+                                if output:
+                                    return True, "✓ UE执行成功", output
+                                else:
+                                    return True, "✓ UE执行成功（无输出）", ""
+                            else:
+                                return False, f"✗ UE执行失败: {error}", output
+                                
+                        except Exception as e:
+                            return True, "✓ UE执行完成（结果读取失败）", ""
+                    else:
+                        return True, "✓ UE执行完成", ""
+            
+            # 超时检查
+            if script_file.exists():
+                # 脚本还在，监听器可能未运行
+                return True, (
+                    "⚠ 脚本已保存，但监听器似乎未运行\n"
+                    "请确保UE已启动并配置了监听器"
+                ), ""
+            else:
+                return True, "✓ UE执行完成（等待超时）", ""
+                
+        except Exception as e:
+            return False, f"执行失败: {str(e)}", ""
+    
+    # ==================== Unreal Engine 连接相关方法结束 ====================
+    
     def _send_to_maya(self, python_code: str, receive_output: bool = True) -> tuple:
         """
         发送Python代码到Maya执行并获取返回信息
@@ -1833,6 +2509,8 @@ finally:
         # 根据DCC类型执行
         if self.connected_dcc == "Maya":
             self._execute_in_maya(current_tool)
+        elif self.connected_dcc == "Unreal Engine":
+            self._execute_in_ue(current_tool)
         else:
             messagebox.showinfo("提示", f"{self.connected_dcc}执行功能开发中...")
     
@@ -1951,6 +2629,140 @@ except Exception as e:
         self.log_message(f"✗ Maya执行失败: {error}", level="error")
         # 失败时显示弹窗提醒用户
         messagebox.showerror("执行失败", f"在Maya中执行失败:\n{error}")
+    
+    # ==================== Unreal Engine 执行相关方法 ====================
+    
+    def _execute_in_ue(self, tool_info):
+        """在Unreal Engine中执行工具"""
+        # 收集参数
+        params = self.collect_parameters()
+        
+        # 构建要在UE中执行的Python代码
+        tool_path = self.git_repo_path / tool_info['path']
+        plugin_file = tool_path / "plugin.py"
+        
+        # 生成执行代码
+        ue_code = self._generate_ue_execution_code(tool_info, params, plugin_file)
+        
+        self.log_message(f"发送代码到Unreal Engine执行...")
+        
+        # 在后台线程中发送
+        def send_code():
+            success, message, ue_output = self._send_to_ue(ue_code)
+            if success:
+                self.root.after(0, lambda: self._on_ue_execution_success(tool_info['name'], ue_output))
+            else:
+                self.root.after(0, lambda: self._on_ue_execution_failed(message, ue_output))
+        
+        threading.Thread(target=send_code, daemon=True).start()
+    
+    def _generate_ue_execution_code(self, tool_info, params, plugin_file):
+        """
+        生成在Unreal Engine中执行的Python代码
+        
+        Args:
+            tool_info: 工具信息字典
+            params: 参数字典
+            plugin_file: 插件文件路径
+        
+        Returns:
+            str: UE中执行的Python代码
+        """
+        # 将路径转换为正斜杠（UE兼容）
+        repo_path_str = str(self.git_repo_path).replace('\\', '/')
+        plugin_file_str = str(plugin_file).replace('\\', '/')
+        
+        # 根据工具名称确定类名和执行方式
+        tool_name = tool_info['name']
+        
+        # 生成UE执行代码
+        code = f'''
+# === DCC Manager 自动生成代码 (Unreal Engine) ===
+import sys
+import os
+import unreal
+
+# 添加项目路径
+repo_path = r"{repo_path_str}"
+if repo_path not in sys.path:
+    sys.path.insert(0, repo_path)
+
+# 执行工具: {tool_name}
+try:
+    # 直接执行插件
+    plugin_path = r"{plugin_file_str}"
+    
+    if os.path.exists(plugin_path):
+        # 读取并执行插件代码中的类
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("{tool_name}", plugin_path)
+        plugin_module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(plugin_module)
+        
+        # 尝试找到并执行插件类
+        plugin_class = None
+        for name in dir(plugin_module):
+            obj = getattr(plugin_module, name)
+            if isinstance(obj, type) and hasattr(obj, 'execute'):
+                plugin_class = obj
+                break
+        
+        if plugin_class:
+            plugin_instance = plugin_class()
+            result = plugin_instance.execute(**{params})
+            unreal.log("=" * 50)
+            unreal.log("执行结果:")
+            unreal.log(str(result))
+            unreal.log("=" * 50)
+        else:
+            # 尝试调用 run_in_unreal 函数
+            if hasattr(plugin_module, 'run_in_unreal'):
+                result = plugin_module.run_in_unreal()
+                unreal.log(f"执行结果: {{result}}")
+            else:
+                unreal.log_warning("未找到可执行的插件类或函数")
+    else:
+        unreal.log_error(f"插件文件不存在: {{plugin_path}}")
+        
+except Exception as e:
+    import traceback
+    unreal.log_error("执行失败:")
+    unreal.log_error(traceback.format_exc())
+'''
+        return code
+    
+    def _on_ue_execution_success(self, tool_name, ue_output=""):
+        """UE执行成功回调"""
+        
+        self.log_message(f"✓ 工具 {tool_name} 已在UE中执行", level="success")
+        
+        # 显示UE返回的输出
+        if ue_output and ue_output.strip():
+            self.log_message("--- UE 输出 ---", level="debug")
+            # 按行显示输出，避免单行过长
+            for line in ue_output.strip().split('\n'):
+                if line.strip():
+                    self.log_message(f"  {line}", level="debug")
+            self.log_message("--- 输出结束 ---", level="debug")
+        else:
+            self.log_message("(执行完成，无输出)", level="debug")
+    
+    def _on_ue_execution_failed(self, error, ue_output=""):
+        """UE执行失败回调"""
+        self.log_message(f"✗ UE执行失败: {error}", level="error")
+        
+        # 显示UE返回的输出（可能包含调试信息）
+        if ue_output and ue_output.strip():
+            self.log_message("--- UE 输出/调试信息 ---", level="debug")
+            for line in ue_output.strip().split('\n'):
+                if line.strip():
+                    self.log_message(f"  {line}", level="debug")
+            self.log_message("--- 输出结束 ---", level="debug")
+        
+        # 失败时显示弹窗提醒用户
+        messagebox.showerror("执行失败", f"在Unreal Engine中执行失败:\n{error}")
+    
+    # ==================== Unreal Engine 执行相关方法结束 ====================
     
     def generate_script(self):
         """生成可在DCC中运行的脚本文件"""

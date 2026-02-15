@@ -170,3 +170,8 @@ framework.log
 # Test coverage
 htmlcov/
 .coverage
+
+# Local user settings (DO NOT COMMIT)
+configs/local_settings.json
+local_settings.json
+*.local.json

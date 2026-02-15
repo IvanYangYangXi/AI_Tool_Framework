@@ -109,11 +109,18 @@ class PluginName:
 
 ## DCC软件连接端口
 
-| 软件 | 端口 | 说明 |
-|------|------|------|
-| Maya | 7001 | 通过commandPort通信 |
-| 3ds Max | 7002 | 通过socket通信 |
-| Blender | 7003 | 通过socket通信 |
+| 软件 | 端口 | 通信方式 | 说明 |
+|------|------|----------|------|
+| Maya | 7001 | Socket | 通过commandPort通信 |
+| 3ds Max | 7002 | Socket | 通过Python socket通信 |
+| Blender | 7003 | Socket | 通过Python socket通信 |
+| Unreal Engine | 30010 | HTTP | 通过Remote Control API通信 |
+
+### UE Remote Control API 启用方法
+
+1. UE编辑器 → **Edit** → **Plugins**
+2. 搜索 **Remote Control API** 并启用
+3. 重启UE编辑器
 
 ## 文档
 
