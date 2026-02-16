@@ -306,39 +306,257 @@ class TriggerConfigWidget:
         
         return self.config_widgets
     
-    def create_task_chain_config(self, config: Dict = None) -> Dict[str, tk.Variable]:
-        """创建任务链配置"""
+    def create_task_chain_config(self, config: Dict = None, 
+                                 available_tasks: List[Dict] = None,
+                                 available_tools: List[Dict] = None) -> Dict[str, tk.Variable]:
+        """
+        创建任务链配置 - 支持添加多个脚本按顺序执行
+        
+        Args:
+            config: 现有配置（编辑模式时）
+            available_tasks: 可用任务列表（暂不使用）
+            available_tools: 可用工具列表 [{"id": "xxx", "name": "工具名", "category": "分类"}, ...]
+        """
         config = config or {}
         self.clear_widgets()
         self.current_trigger_type = "task_chain"
         
-        # 前置任务
-        parent_row = ttk.Frame(self.container)
-        parent_row.pack(fill=tk.X, pady=5)
+        # 检查容器是否有效
+        try:
+            if not self.container.winfo_exists():
+                return {}
+        except tk.TclError:
+            return {}
         
-        ttk.Label(parent_row, text="前置任务:").pack(side=tk.LEFT)
-        parent_var = tk.StringVar(value=config.get('parent_task', ''))
+        # 处理传入的工具列表
+        if available_tools is None:
+            available_tools = config.get('available_tools', [])
         
-        # TODO: 这里需要从task_manager获取任务列表
-        parent_combo = ttk.Combobox(parent_row, textvariable=parent_var, state='readonly')
-        parent_combo.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
+        # 确保是列表类型
+        if isinstance(available_tools, list) and len(available_tools) > 0:
+            if isinstance(available_tools[0], str):
+                available_tools = [{"id": t, "name": t, "category": ""} for t in available_tools]
         
-        # 延迟时间
-        delay_row = ttk.Frame(self.container)
-        delay_row.pack(fill=tk.X, pady=5)
+        # =========== 说明标签 ===========
+        info_frame = ttk.Frame(self.container)
+        info_frame.pack(fill=tk.X, pady=(0, 5))
         
-        ttk.Label(delay_row, text="延迟执行:").pack(side=tk.LEFT)
-        delay_var = tk.StringVar(value=str(config.get('delay_seconds', 0)))
-        ttk.Entry(delay_row, textvariable=delay_var, width=10).pack(side=tk.LEFT, padx=5)
-        ttk.Label(delay_row, text="秒").pack(side=tk.LEFT)
+        ttk.Label(info_frame, text="📋 任务链：添加脚本，任务触发时按顺序执行", 
+                  foreground='#0066cc').pack(anchor=tk.W)
         
-        # 存储控件引用 - 格式：(type, variable)
+        # =========== 工具选择下拉框（第一行：下拉框） ===========
+        select_frame = ttk.Frame(self.container)
+        select_frame.pack(fill=tk.X, pady=2)
+        
+        ttk.Label(select_frame, text="选择脚本:").pack(side=tk.LEFT)
+        
+        # 构建工具选项列表
+        tool_options = []
+        self._tool_id_map = {}  # 显示名 -> ID
+        self._tool_category_map = {}  # 显示名 -> category
+        for tool_info in available_tools:
+            if isinstance(tool_info, dict):
+                tool_id = tool_info.get('id', '')
+                tool_name = tool_info.get('name', tool_id)
+                tool_category = tool_info.get('category', '')
+                display_name = f"{tool_name}" + (f" ({tool_category})" if tool_category else "")
+            else:
+                tool_id = str(tool_info)
+                tool_category = ''
+                display_name = str(tool_info)
+            
+            tool_options.append(display_name)
+            self._tool_id_map[display_name] = tool_id
+            self._tool_category_map[display_name] = tool_category
+        
+        if not tool_options:
+            tool_options = ["(暂无可用工具)"]
+        
+        self._tool_select_var = tk.StringVar()
+        tool_combo = ttk.Combobox(select_frame, textvariable=self._tool_select_var,
+                                   values=tool_options, state='readonly')
+        tool_combo.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
+        
+        # =========== 运行模式选择（第二行） ===========
+        mode_frame = ttk.Frame(self.container)
+        mode_frame.pack(fill=tk.X, pady=2)
+        
+        ttk.Label(mode_frame, text="运行模式:").pack(side=tk.LEFT)
+        
+        self._chain_mode_var = tk.StringVar(value="standalone")
+        ttk.Radiobutton(mode_frame, text="独立运行", variable=self._chain_mode_var, 
+                       value="standalone").pack(side=tk.LEFT, padx=5)
+        ttk.Radiobutton(mode_frame, text="DCC内运行", variable=self._chain_mode_var,
+                       value="dcc").pack(side=tk.LEFT, padx=5)
+        
+        # 添加按钮
+        add_btn = ttk.Button(mode_frame, text="添加 ➕", width=10,
+                             command=lambda: self._add_chain_tool())
+        add_btn.pack(side=tk.RIGHT)
+        
+        # =========== 已添加的脚本列表 ===========
+        list_label_frame = ttk.Frame(self.container)
+        list_label_frame.pack(fill=tk.X, pady=(10, 2))
+        ttk.Label(list_label_frame, text="执行顺序 (从上到下依次执行):").pack(anchor=tk.W)
+        
+        # 列表框和滚动条
+        list_frame = ttk.Frame(self.container)
+        list_frame.pack(fill=tk.BOTH, expand=True, pady=5)
+        
+        scrollbar = ttk.Scrollbar(list_frame)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        self._chain_listbox = tk.Listbox(list_frame, height=6, 
+                                          yscrollcommand=scrollbar.set,
+                                          selectmode=tk.SINGLE)
+        self._chain_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.config(command=self._chain_listbox.yview)
+        
+        # 存储脚本链数据: [(display_name, tool_id), ...]
+        self._chain_tools = []
+        
+        # 加载现有配置
+        existing_chain = config.get('chain_tools', [])
+        for item in existing_chain:
+            if isinstance(item, dict):
+                tool_id = item.get('id', '')
+                tool_name = item.get('name', tool_id)
+                tool_category = item.get('category', '')
+                execution_mode = item.get('mode', 'standalone')
+            else:
+                tool_id = str(item)
+                tool_name = str(item)
+                tool_category = ''
+                execution_mode = 'standalone'
+            
+            # 查找显示名
+            display_name = tool_name
+            for dn, tid in self._tool_id_map.items():
+                if tid == tool_id:
+                    display_name = dn
+                    break
+            
+            # 运行模式显示名
+            mode_label = "独立" if execution_mode == "standalone" else "DCC"
+            
+            # 存储完整的4元组
+            self._chain_tools.append((display_name, tool_id, tool_category, execution_mode))
+            display_text = f"  {len(self._chain_tools)}. [{mode_label}] {display_name}"
+            self._chain_listbox.insert(tk.END, display_text)
+        
+        # =========== 操作按钮 ===========
+        btn_frame = ttk.Frame(self.container)
+        btn_frame.pack(fill=tk.X, pady=5)
+        
+        ttk.Button(btn_frame, text="⬆ 上移", width=8,
+                   command=lambda: self._move_chain_tool(-1)).pack(side=tk.LEFT, padx=2)
+        ttk.Button(btn_frame, text="⬇ 下移", width=8,
+                   command=lambda: self._move_chain_tool(1)).pack(side=tk.LEFT, padx=2)
+        ttk.Button(btn_frame, text="🗑 删除", width=8,
+                   command=lambda: self._remove_chain_tool()).pack(side=tk.LEFT, padx=2)
+        ttk.Button(btn_frame, text="清空全部", width=8,
+                   command=lambda: self._clear_chain_tools()).pack(side=tk.RIGHT, padx=2)
+        
+        # =========== 执行选项 ===========
+        option_frame = ttk.LabelFrame(self.container, text="执行选项")
+        option_frame.pack(fill=tk.X, pady=10)
+        
+        # 错误处理选项
+        error_row = ttk.Frame(option_frame)
+        error_row.pack(fill=tk.X, pady=5, padx=10)
+        
+        ttk.Label(error_row, text="遇到错误时:", width=12).pack(side=tk.LEFT)
+        
+        self._on_error_var = tk.StringVar(value=config.get('on_error', 'stop'))
+        ttk.Radiobutton(error_row, text="停止执行", variable=self._on_error_var, 
+                        value='stop').pack(side=tk.LEFT, padx=5)
+        ttk.Radiobutton(error_row, text="继续执行下一个", variable=self._on_error_var, 
+                        value='continue').pack(side=tk.LEFT, padx=5)
+        
+        # 执行间隔
+        delay_row = ttk.Frame(option_frame)
+        delay_row.pack(fill=tk.X, pady=5, padx=10)
+        
+        ttk.Label(delay_row, text="执行间隔:", width=12).pack(side=tk.LEFT)
+        self._delay_var = tk.StringVar(value=str(config.get('delay_seconds', 0)))
+        ttk.Entry(delay_row, textvariable=self._delay_var, width=8).pack(side=tk.LEFT, padx=5)
+        ttk.Label(delay_row, text="秒 (每个脚本执行后等待)").pack(side=tk.LEFT)
+        
+        # =========== 存储控件引用（用于collect_config） ===========
         self.config_widgets = {
-            'parent_task': ('string', parent_var),
-            'delay_seconds': ('int', delay_var)
+            'on_error': ('string', self._on_error_var),
+            'delay_seconds': ('int', self._delay_var)
         }
         
         return self.config_widgets
+    
+    def _add_chain_tool(self):
+        """添加工具到任务链"""
+        selected = self._tool_select_var.get()
+        if not selected or selected == "(暂无可用工具)":
+            return
+        
+        # 获取真实ID和运行模式
+        tool_id = self._tool_id_map.get(selected, selected)
+        tool_category = self._tool_category_map.get(selected, '')
+        execution_mode = self._chain_mode_var.get()
+        
+        # 运行模式显示名
+        mode_label = "独立" if execution_mode == "standalone" else "DCC"
+        
+        # 添加到列表 (display_name, tool_id, category, mode)
+        self._chain_tools.append((selected, tool_id, tool_category, execution_mode))
+        display_text = f"  {len(self._chain_tools)}. [{mode_label}] {selected}"
+        self._chain_listbox.insert(tk.END, display_text)
+        
+        # 清空选择
+        self._tool_select_var.set('')
+    
+    def _remove_chain_tool(self):
+        """从任务链中删除选中的工具"""
+        selection = self._chain_listbox.curselection()
+        if not selection:
+            return
+        
+        idx = selection[0]
+        self._chain_tools.pop(idx)
+        self._refresh_chain_listbox()
+    
+    def _move_chain_tool(self, direction: int):
+        """移动选中的工具（-1=上移, 1=下移）"""
+        selection = self._chain_listbox.curselection()
+        if not selection:
+            return
+        
+        idx = selection[0]
+        new_idx = idx + direction
+        
+        if 0 <= new_idx < len(self._chain_tools):
+            # 交换位置
+            self._chain_tools[idx], self._chain_tools[new_idx] = \
+                self._chain_tools[new_idx], self._chain_tools[idx]
+            self._refresh_chain_listbox()
+            # 保持选中状态
+            self._chain_listbox.selection_set(new_idx)
+    
+    def _clear_chain_tools(self):
+        """清空所有任务链工具"""
+        self._chain_tools = []
+        self._refresh_chain_listbox()
+    
+    def _refresh_chain_listbox(self):
+        """刷新任务链列表显示"""
+        self._chain_listbox.delete(0, tk.END)
+        for i, item in enumerate(self._chain_tools, 1):
+            # 兼容旧格式(2元组)和新格式(4元组)
+            if len(item) >= 4:
+                display_name, tool_id, category, mode = item
+                mode_label = "独立" if mode == "standalone" else "DCC"
+                display_text = f"  {i}. [{mode_label}] {display_name}"
+            else:
+                display_name = item[0]
+                display_text = f"  {i}. {display_name}"
+            self._chain_listbox.insert(tk.END, display_text)
     
     def create_custom_trigger_config(self, trigger_info, config: Dict = None) -> Dict[str, tk.Variable]:
         """创建自定义触发器配置"""
@@ -545,8 +763,27 @@ class TriggerConfigWidget:
             result['recursive'] = raw_config.get('recursive', False)
             
         elif self.current_trigger_type == "task_chain":
-            # 任务链：parent_task, delay_seconds
-            result['parent_task'] = raw_config.get('parent_task', '')
+            # 任务链：收集脚本列表和执行选项
+            chain_tools = []
+            if hasattr(self, '_chain_tools'):
+                for item in self._chain_tools:
+                    # 兼容旧格式(2元组)和新格式(4元组)
+                    if len(item) >= 4:
+                        display_name, tool_id, category, mode = item
+                    else:
+                        display_name, tool_id = item[0], item[1]
+                        category = ''
+                        mode = 'standalone'
+                    
+                    chain_tools.append({
+                        'id': tool_id,
+                        'name': display_name,
+                        'category': category,
+                        'mode': mode
+                    })
+            
+            result['chain_tools'] = chain_tools
+            result['on_error'] = raw_config.get('on_error', 'stop')
             result['delay_seconds'] = raw_config.get('delay_seconds', 0)
             
         else:
@@ -586,6 +823,12 @@ class TriggerConfigWidget:
                 # 检查路径是否存在
                 if not Path(watch_path).exists():
                     return False, f"监控路径不存在: {watch_path}"
+            
+            elif self.current_trigger_type == "task_chain":
+                # 验证至少添加了一个脚本
+                chain_tools = config.get('chain_tools', [])
+                if not chain_tools:
+                    return False, "请至少添加一个脚本到任务链"
             
             return True, ""
             

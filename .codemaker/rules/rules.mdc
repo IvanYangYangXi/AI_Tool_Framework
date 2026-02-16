@@ -344,6 +344,48 @@ class RequirementAnalyzer:
     def analyze_requirement(self, description: str) -> RequirementAnalysis:
 ```
 
+#### AutomationManager (src/gui/automation_manager.py)
+```python
+class AutomationManager:
+    def __init__(self, config_dir: str = "./configs"):
+    def set_execute_callback(self, callback: Callable[[str, str, str, Dict], Dict]):
+    def create_task(self, name: str, tool_id: str, tool_path: str, 
+                   trigger_type: str, trigger_config: Dict, 
+                   parameters: Dict = None, task_chain_config: Dict = None) -> str:
+    def update_task(self, task_id: str, **kwargs) -> bool:
+    def delete_task(self, task_id: str) -> bool:
+    def run_task_now(self, task_id: str) -> bool:
+    def get_all_tasks(self) -> List[AutomationTask]:
+    def start(self):
+    def stop(self):
+```
+
+#### LightweightManager 自动化回调 (src/gui/lightweight_manager.py)
+```python
+# 自动化执行回调接口
+def _execute_tool_for_automation(
+    self, 
+    tool_id: str,       # 工具ID
+    category: str,      # 工具分类 (maya/max/blender/ue/other)
+    mode: str,          # 执行模式 (standalone/dcc)
+    params: dict        # 执行参数
+) -> dict:
+    """
+    返回格式:
+    {"status": "success/error", "result": ..., "message": "..."}
+    """
+
+# DCC自动化执行方法
+def _execute_in_maya_for_automation(self, tool_info: dict, params: dict):
+    """Maya执行 - 返回后打印输出到GUI日志"""
+def _execute_in_ue_for_automation(self, tool_info: dict, params: dict):
+    """UE执行 - 返回后打印输出到GUI日志"""
+
+# DCC输出日志方法
+def _log_maya_automation_output(self, tool_name: str, output: str):
+def _log_ue_automation_output(self, tool_name: str, output: str):
+```
+
 ### 3.2 关键枚举类型
 
 ```python
@@ -430,6 +472,32 @@ class GenerationResult:
     validation_results: Dict[str, Any]
     ai_prompt_used: str
     execution_instructions: str
+
+# src/gui/automation_manager.py
+@dataclass
+class AutomationTask:
+    task_id: str                    # 唯一ID (UUID)
+    name: str                       # 任务名称
+    tool_id: str                    # 关联的工具ID
+    tool_path: str                  # 工具路径
+    trigger_type: str               # 触发器类型: manual/interval/scheduled/file_watch/task_chain
+    trigger_config: Dict[str, Any]  # 触发器配置
+    enabled: bool = True            # 是否启用
+    parameters: Dict[str, Any]      # 执行参数
+    status: str = "idle"            # 任务状态: idle/waiting/running/completed/paused/error
+    last_run: datetime = None       # 上次执行时间
+    next_run: datetime = None       # 下次执行时间
+    task_chain_config: Dict = None  # 任务链配置（仅task_chain类型）
+
+# 任务链配置格式
+task_chain_config = {
+    "chain_tools": [
+        {"id": "tool_id", "name": "工具名", "category": "maya", "mode": "dcc"},
+        {"id": "tool_id2", "name": "工具名2", "category": "other", "mode": "standalone"}
+    ],
+    "on_error": "stop",    # stop=停止执行, continue=继续执行
+    "delay_seconds": 2     # 脚本间延迟秒数
+}
 ```
 
 ### 3.4 插件常量定义模式

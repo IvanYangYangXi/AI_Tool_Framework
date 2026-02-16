@@ -626,9 +626,34 @@ class LightweightDCCManager:
                 self.root.after(0, log_result)
                 return {"status": "success", "result": result}
             else:
-                # DCC执行 - 简化处理
-                self.root.after(0, lambda: self.log_message(f"[自动化] 自动化暂不支持DCC模式"))
-                return {"status": "error", "message": "自动化暂不支持DCC模式"}
+                # DCC执行 - 需要DCC连接
+                if not self.connected_dcc:
+                    self.root.after(0, lambda: self.log_message(f"[自动化] DCC模式需要先连接到DCC软件"))
+                    return {"status": "error", "message": "请先连接到DCC软件"}
+                
+                # 根据已连接的DCC类型执行
+                dcc_type = self.connected_dcc
+                self.root.after(0, lambda: self.log_message(f"[自动化] 在 {dcc_type} 中执行工具: {tool_name}"))
+                
+                try:
+                    if dcc_type == "Maya":
+                        self._execute_in_maya_for_automation(tool_info, params or {})
+                    elif dcc_type == "Unreal Engine":
+                        self._execute_in_ue_for_automation(tool_info, params or {})
+                    elif dcc_type == "3ds Max":
+                        self._execute_in_max_for_automation(tool_info, params or {})
+                    elif dcc_type == "Blender":
+                        self._execute_in_blender_for_automation(tool_info, params or {})
+                    else:
+                        self.root.after(0, lambda: self.log_message(f"[自动化] 不支持的DCC类型: {dcc_type}"))
+                        return {"status": "error", "message": f"不支持的DCC类型: {dcc_type}"}
+                    
+                    self.root.after(0, lambda: self.log_message(f"[自动化] ✓ 工具 '{tool_name}' 已发送到 {dcc_type}"))
+                    return {"status": "success", "message": f"已发送到 {dcc_type}"}
+                except Exception as e:
+                    error_msg = str(e)
+                    self.root.after(0, lambda: self.log_message(f"[自动化] ✗ DCC执行错误: {error_msg}"))
+                    return {"status": "error", "message": error_msg}
         except Exception as e:
             error_msg = str(e)
             self.root.after(0, lambda: self.log_message(f"[自动化] ✗ 执行错误: {error_msg}"))
@@ -639,6 +664,69 @@ class LightweightDCCManager:
         self.root.after(0, lambda: self.log_message(
             f"[自动化] 任务 '{task.name}' 执行完成，状态: {task.status}"
         ))
+    
+    def _execute_in_maya_for_automation(self, tool_info: dict, params: dict):
+        """自动化模式下在Maya中执行工具"""
+        tool_path = Path(tool_info['path'])
+        plugin_file = tool_path / "plugin.py"
+        
+        maya_code = self._generate_maya_execution_code(tool_info, params, plugin_file)
+        success, message, maya_output = self._send_to_maya(maya_code)
+        
+        if not success:
+            raise Exception(f"Maya执行失败: {message}")
+        
+        # 打印Maya返回的输出日志
+        if maya_output:
+            self.root.after(0, lambda: self._log_maya_automation_output(tool_info.get('name', 'Maya工具'), maya_output))
+    
+    def _execute_in_ue_for_automation(self, tool_info: dict, params: dict):
+        """自动化模式下在Unreal Engine中执行工具"""
+        tool_path = Path(tool_info['path'])
+        plugin_file = tool_path / "plugin.py"
+        
+        ue_code = self._generate_ue_execution_code(tool_info, params, plugin_file)
+        result = self._send_to_ue(ue_code)
+        
+        # _send_to_ue 返回 (success, message, output)
+        success = result[0] if len(result) > 0 else False
+        message = result[1] if len(result) > 1 else "Unknown error"
+        output = result[2] if len(result) > 2 else ""
+        
+        if not success:
+            raise Exception(f"UE执行失败: {message}")
+        
+        # 打印UE返回的输出日志
+        if output:
+            self.root.after(0, lambda: self._log_ue_automation_output(tool_info.get('name', 'UE工具'), output))
+    
+    def _log_maya_automation_output(self, tool_name: str, output: str):
+        """打印Maya自动化执行的输出日志"""
+        self.log_message(f"[自动化] Maya '{tool_name}' 输出:")
+        lines = output.strip().split('\n') if output else []
+        for i, line in enumerate(lines[:20]):  # 最多显示20行
+            if line.strip():
+                self.log_message(f"  {line}")
+        if len(lines) > 20:
+            self.log_message(f"  ... (共 {len(lines)} 行输出)")
+    
+    def _log_ue_automation_output(self, tool_name: str, output: str):
+        """打印UE自动化执行的输出日志"""
+        self.log_message(f"[自动化] UE '{tool_name}' 输出:")
+        lines = output.strip().split('\n') if output else []
+        for i, line in enumerate(lines[:20]):  # 最多显示20行
+            if line.strip():
+                self.log_message(f"  {line}")
+        if len(lines) > 20:
+            self.log_message(f"  ... (共 {len(lines)} 行输出)")
+    
+    def _execute_in_max_for_automation(self, tool_info: dict, params: dict):
+        """自动化模式下在3ds Max中执行工具（暂未实现）"""
+        raise Exception("3ds Max自动化执行暂未实现")
+    
+    def _execute_in_blender_for_automation(self, tool_info: dict, params: dict):
+        """自动化模式下在Blender中执行工具（暂未实现）"""
+        raise Exception("Blender自动化执行暂未实现")
     
     def _show_automation_dialog(self):
         """显示自动化任务管理对话框"""
@@ -780,13 +868,24 @@ class LightweightDCCManager:
     
     def _on_close(self):
         """窗口关闭事件"""
-        # 检查是否有活动的自动化任务
-        active_tasks = [t for t in self.automation_manager.get_all_tasks() if t.enabled]
+        # 检查是否有需要后台运行的自动化任务
+        # 只有正在运行或等待自动触发的任务才需要弹窗提示
+        running_tasks = []
+        for task in self.automation_manager.get_all_tasks():
+            if not task.enabled:
+                continue
+            # 检查任务类型：间隔执行、定时执行、文件监控需要后台运行
+            # 任务链是手动触发的，不需要后台运行
+            if task.trigger_type in ['interval', 'scheduled', 'file_watch']:
+                running_tasks.append(task)
+            # 或者任务正在运行中
+            elif task.status == 'running':
+                running_tasks.append(task)
         
-        if active_tasks:
+        if running_tasks:
             result = messagebox.askyesnocancel(
                 "关闭确认",
-                f"当前有 {len(active_tasks)} 个活动的自动化任务。\n\n"
+                f"当前有 {len(running_tasks)} 个自动执行的任务正在运行。\n\n"
                 "• 点击【是】- 最小化到系统托盘，任务继续运行\n"
                 "• 点击【否】- 直接退出，任务将停止\n"
                 "• 点击【取消】- 返回程序",

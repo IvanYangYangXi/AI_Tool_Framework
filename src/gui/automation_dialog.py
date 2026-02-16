@@ -516,6 +516,45 @@ class AutomationDialog:
             return task.custom_trigger_config or {}
         return {}
     
+    def _get_available_tasks(self) -> list:
+        """获取可用于任务链的任务列表
+        
+        Returns:
+            任务列表，格式: [{"id": task_id, "name": task_name}, ...]
+        """
+        tasks = []
+        try:
+            for task in self.manager.list_tasks():
+                tasks.append({
+                    "id": task.id,
+                    "name": task.name
+                })
+        except Exception as e:
+            print(f"[DEBUG] 获取任务列表失败: {e}")
+        return tasks
+    
+    def _get_available_tools(self) -> list:
+        """获取可用于任务链的工具列表
+        
+        Returns:
+            工具列表，格式: [{"id": tool_id, "name": display_name, "category": category}, ...]
+        """
+        tools = []
+        try:
+            if hasattr(self, 'tools_cache') and self.tools_cache:
+                for tool_id, tool_info in self.tools_cache.items():
+                    # 获取显示名称和分类
+                    display_name = tool_info.get('display_name', tool_info.get('name', tool_id))
+                    category = tool_info.get('category', '未分类')
+                    tools.append({
+                        "id": tool_id,
+                        "name": display_name,
+                        "category": category
+                    })
+        except Exception as e:
+            print(f"[DEBUG] 获取工具列表失败: {e}")
+        return tools
+    
     def _load_trigger_config_for_edit(self, task: AutomationTask):
         """加载触发配置到编辑区域 - 使用共享组件"""
         trigger_type = task.trigger_type
@@ -531,7 +570,13 @@ class AutomationDialog:
         elif trigger_type == TriggerType.FILE_WATCH.value:
             self.trigger_config_widget.create_file_watch_config(config)
         elif trigger_type == TriggerType.TASK_CHAIN.value:
-            self.trigger_config_widget.create_task_chain_config(config)
+            available_tasks = self._get_available_tasks()
+            available_tools = self._get_available_tools()
+            self.trigger_config_widget.create_task_chain_config(
+                config,
+                available_tasks=available_tasks,
+                available_tools=available_tools
+            )
         elif trigger_type == TriggerType.CUSTOM.value or trigger_type == "custom":
             # 获取trigger_script_id并查找触发器信息
             trigger_script_id = config.get('trigger_script_id')
@@ -799,7 +844,14 @@ class AutomationDialog:
         elif trigger_type == "file_watch":
             self.trigger_config_widget.create_file_watch_config(config)
         elif trigger_type == "task_chain":
-            self.trigger_config_widget.create_task_chain_config(config)
+            # 获取可用任务和工具列表
+            available_tasks = self._get_available_tasks()
+            available_tools = self._get_available_tools()
+            self.trigger_config_widget.create_task_chain_config(
+                config, 
+                available_tasks=available_tasks,
+                available_tools=available_tools
+            )
         else:
             # 自定义触发器：直接通过 trigger_type（即触发器的 name）查找
             print(f"[DEBUG] 查找自定义触发器: {trigger_type}")
@@ -1374,8 +1426,9 @@ class CreateTaskDialog:
         
         self.dialog = tk.Toplevel(parent)
         self.dialog.title("➕ 创建自动化任务")
-        self.dialog.geometry("520x600")
-        self.dialog.resizable(False, False)
+        self.dialog.geometry("560x700")
+        self.dialog.minsize(560, 600)
+        self.dialog.resizable(True, True)
         self.dialog.transient(parent)
         self.dialog.grab_set()
         
@@ -1383,9 +1436,9 @@ class CreateTaskDialog:
         
         # 居中
         self.dialog.update_idletasks()
-        x = (self.dialog.winfo_screenwidth() - 520) // 2
-        y = (self.dialog.winfo_screenheight() - 600) // 2
-        self.dialog.geometry(f"520x600+{x}+{y}")
+        x = (self.dialog.winfo_screenwidth() - 580) // 2
+        y = (self.dialog.winfo_screenheight() - 720) // 2
+        self.dialog.geometry(f"580x720+{x}+{y}")
     
     def _create_ui(self):
         """创建界面"""
@@ -1492,8 +1545,8 @@ class CreateTaskDialog:
         self.config_frame = ttk.LabelFrame(main_frame, text="触发配置", padding="10")
         self.config_frame.pack(fill=tk.BOTH, expand=True, pady=10)
         
-        # 初始化后再创建触发器配置控件
-        self.dialog.after(100, self._initialize_trigger_config)
+        # 立即初始化触发器配置控件（不再延迟）
+        self._initialize_trigger_config()
         
         # 按钮
         btn_frame = ttk.Frame(main_frame)
@@ -1655,9 +1708,14 @@ class CreateTaskDialog:
             elif trigger_name == "file_watch":
                 self.trigger_config_widget.create_file_watch_config()
             elif trigger_name == "task_chain":
-                # 获取可用任务列表
-                available_tasks = [t.name for t in self.manager.list_tasks()]
-                self.trigger_config_widget.create_task_chain_config({"available_tasks": available_tasks})
+                # 获取可用任务和工具列表
+                available_tasks = self._get_available_tasks()
+                available_tools = self._get_available_tools()
+                self.trigger_config_widget.create_task_chain_config(
+                    config={},
+                    available_tasks=available_tasks,
+                    available_tools=available_tools
+                )
             else:
                 # 自定义触发器
                 print(f"[DEBUG] _on_trigger_change: 创建自定义触发器配置")
@@ -1665,8 +1723,45 @@ class CreateTaskDialog:
         else:
             print(f"[DEBUG] _on_trigger_change: 未找到触发器信息: {trigger}")
     
+    def _get_available_tasks(self) -> list:
+        """获取可用于任务链的任务列表
+        
+        Returns:
+            任务列表，格式: [{"id": task_id, "name": task_name}, ...]
+        """
+        tasks = []
+        try:
+            for task in self.manager.list_tasks():
+                tasks.append({
+                    "id": task.id,
+                    "name": task.name
+                })
+        except Exception as e:
+            print(f"[DEBUG] 获取任务列表失败: {e}")
+        return tasks
     
-    
+    def _get_available_tools(self) -> list:
+        """获取可用于任务链的工具列表
+        
+        Returns:
+            工具列表，格式: [{"id": tool_id, "name": display_name, "category": category}, ...]
+        """
+        tools = []
+        try:
+            # 使用 tools_cache 属性
+            if hasattr(self, 'tools_cache') and self.tools_cache:
+                for tool_id, tool_info in self.tools_cache.items():
+                    # 获取显示名称和分类
+                    display_name = tool_info.get('display_name', tool_info.get('name', tool_id))
+                    category = tool_info.get('category', '未分类')
+                    tools.append({
+                        "id": tool_id,
+                        "name": display_name,
+                        "category": category
+                    })
+        except Exception as e:
+            print(f"[DEBUG] 获取工具列表失败: {e}")
+        return tools
     
     def _create_task(self):
         """创建任务"""

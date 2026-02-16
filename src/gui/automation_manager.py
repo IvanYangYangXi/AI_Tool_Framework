@@ -594,22 +594,71 @@ class AutomationManager:
             logger.warning(f"任务 {task.name}: 未设置执行回调")
     
     def _execute_task_chain(self, task: AutomationTask):
-        """执行任务链"""
+        """执行任务链 - 按顺序执行多个脚本"""
         config = task.task_chain_config or {}
-        chain_task_ids = config.get("tasks", [])
-        stop_on_error = config.get("stop_on_error", True)
-        delay = config.get("delay_between", 2)
         
-        for task_id in chain_task_ids:
-            if task_id in self.tasks:
-                sub_task = self.tasks[task_id]
-                try:
-                    self._execute_single_tool(sub_task)
-                    time.sleep(delay)
-                except Exception as e:
-                    logger.error(f"任务链中的 {task_id} 执行失败: {e}")
-                    if stop_on_error:
-                        raise
+        # 新格式：chain_tools 列表
+        chain_tools = config.get("chain_tools", [])
+        on_error = config.get("on_error", "stop")  # stop 或 continue
+        delay_seconds = config.get("delay_seconds", 0)
+        
+        # 兼容旧格式：tasks 列表
+        if not chain_tools:
+            chain_task_ids = config.get("tasks", [])
+            stop_on_error = config.get("stop_on_error", True)
+            delay = config.get("delay_between", 2)
+            
+            for task_id in chain_task_ids:
+                if task_id in self.tasks:
+                    sub_task = self.tasks[task_id]
+                    try:
+                        self._execute_single_tool(sub_task)
+                        time.sleep(delay)
+                    except Exception as e:
+                        logger.error(f"任务链中的 {task_id} 执行失败: {e}")
+                        if stop_on_error:
+                            raise
+            return
+        
+        # 新格式处理
+        logger.info(f"开始执行任务链 '{task.name}'，共 {len(chain_tools)} 个脚本")
+        
+        for i, tool_info in enumerate(chain_tools, 1):
+            tool_id = tool_info.get('id', '')
+            tool_name = tool_info.get('name', tool_id)
+            tool_category = tool_info.get('category', '')
+            execution_mode = tool_info.get('mode', 'standalone')
+            
+            logger.info(f"[{i}/{len(chain_tools)}] 执行脚本: {tool_name} (模式: {execution_mode})")
+            
+            try:
+                # 执行脚本
+                if self.execute_callback:
+                    result = self.execute_callback(
+                        tool_id,
+                        tool_category,
+                        execution_mode,
+                        {}  # 无参数
+                    )
+                    logger.info(f"[{i}/{len(chain_tools)}] 脚本 {tool_name} 执行完成: {result}")
+                else:
+                    logger.warning(f"[{i}/{len(chain_tools)}] 未设置工具执行器，跳过脚本: {tool_name}")
+                
+                # 等待间隔
+                if delay_seconds > 0 and i < len(chain_tools):
+                    logger.info(f"等待 {delay_seconds} 秒后执行下一个脚本...")
+                    time.sleep(delay_seconds)
+                    
+            except Exception as e:
+                logger.error(f"[{i}/{len(chain_tools)}] 脚本 {tool_name} 执行失败: {e}")
+                
+                if on_error == "stop":
+                    logger.error(f"任务链 '{task.name}' 因错误停止执行")
+                    raise
+                else:
+                    logger.warning(f"继续执行下一个脚本...")
+        
+        logger.info(f"任务链 '{task.name}' 执行完成")
     
     def run_task_now(self, task_id: str) -> bool:
         """立即运行任务"""
