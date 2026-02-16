@@ -288,8 +288,8 @@ class AutomationDialog:
         self.task_tree.bind('<Double-1>', lambda e: self._run_selected())
     
     def _create_detail_panel(self, parent):
-        """创建详情面板"""
-        detail_frame = ttk.LabelFrame(parent, text="任务详情", padding="10")
+        """创建编辑面板"""
+        detail_frame = ttk.LabelFrame(parent, text="任务编辑", padding="10")
         parent.add(detail_frame, weight=1)
         
         # 使用canvas实现滚动
@@ -311,23 +311,22 @@ class AutomationDialog:
         self.detail_inner.bind('<Configure>', lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
         canvas.bind('<Configure>', configure_scroll)
         
-        # 详情内容
-        self._create_detail_content()
+        # 编辑内容
+        self._create_edit_content()
     
-    def _create_detail_content(self):
-        """创建详情内容"""
+    def _create_edit_content(self):
+        """创建编辑内容"""
         frame = self.detail_inner
         
-        # 编辑模式控制
-        self.is_editing = False
-        edit_header = ttk.Frame(frame)
-        edit_header.pack(fill=tk.X, pady=(0, 10))
+        # 标题
+        header_frame = ttk.Frame(frame)
+        header_frame.pack(fill=tk.X, pady=(0, 10))
         
-        ttk.Label(edit_header, text="任务详情", font=('Arial', 12, 'bold')).pack(side=tk.LEFT)
+        ttk.Label(header_frame, text="任务编辑", font=('Arial', 12, 'bold')).pack(side=tk.LEFT)
         
-        self.edit_mode_btn = ttk.Button(edit_header, text="📝 编辑", 
-                                       command=self._toggle_edit_mode)
-        self.edit_mode_btn.pack(side=tk.RIGHT)
+        # 提示信息
+        ttk.Label(header_frame, text="选择左侧任务进行编辑", 
+                 foreground="gray", font=('Arial', 9)).pack(side=tk.RIGHT)
         
         # 基本信息
         info_frame = ttk.LabelFrame(frame, text="基本信息", padding="10")
@@ -338,41 +337,31 @@ class AutomationDialog:
         row1.pack(fill=tk.X, pady=2)
         ttk.Label(row1, text="名称:", width=10).pack(side=tk.LEFT)
         self.detail_name_var = tk.StringVar()
-        self.detail_name_entry = ttk.Entry(row1, textvariable=self.detail_name_var, state='readonly')
+        self.detail_name_entry = ttk.Entry(row1, textvariable=self.detail_name_var)
         self.detail_name_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
         
-        # 工具
+        # 工具（只读）
         row2 = ttk.Frame(info_frame)
         row2.pack(fill=tk.X, pady=2)
         ttk.Label(row2, text="工具:", width=10).pack(side=tk.LEFT)
         self.detail_tool_var = tk.StringVar()
-        self.detail_tool_label = ttk.Label(row2, textvariable=self.detail_tool_var)
+        self.detail_tool_label = ttk.Label(row2, textvariable=self.detail_tool_var, foreground="blue")
         self.detail_tool_label.pack(side=tk.LEFT)
         
-        # 状态
+        # 启用状态
         row3 = ttk.Frame(info_frame)
         row3.pack(fill=tk.X, pady=2)
-        ttk.Label(row3, text="状态:", width=10).pack(side=tk.LEFT)
-        self.detail_status_var = tk.StringVar()
-        self.detail_status_label = ttk.Label(row3, textvariable=self.detail_status_var)
-        self.detail_status_label.pack(side=tk.LEFT)
-        
-        # 启用状态
-        row4 = ttk.Frame(info_frame)
-        row4.pack(fill=tk.X, pady=2)
-        ttk.Label(row4, text="启用:", width=10).pack(side=tk.LEFT)
+        ttk.Label(row3, text="启用:", width=10).pack(side=tk.LEFT)
         self.detail_enabled_var = tk.BooleanVar()
-        self.detail_enabled_check = ttk.Checkbutton(row4, variable=self.detail_enabled_var, 
-                                                   state='disabled')
+        self.detail_enabled_check = ttk.Checkbutton(row3, variable=self.detail_enabled_var,
+                                                   text="自动执行此任务")
         self.detail_enabled_check.pack(side=tk.LEFT)
-        # 添加说明
-        ttk.Label(row4, text="(控制任务是否自动执行)", foreground="gray").pack(side=tk.LEFT, padx=(5, 0))
         
         # 触发配置
         trigger_frame = ttk.LabelFrame(frame, text="触发配置", padding="10")
         trigger_frame.pack(fill=tk.X, pady=(0, 10))
         
-        # 触发类型选择（编辑模式）
+        # 触发类型选择
         trigger_type_frame = ttk.Frame(trigger_frame)
         trigger_type_frame.pack(fill=tk.X, pady=(0, 5))
         
@@ -385,50 +374,57 @@ class AutomationDialog:
         self.detail_trigger_combo = ttk.Combobox(trigger_type_frame, 
                                                textvariable=self.detail_trigger_type_var,
                                                values=trigger_display_values,
-                                               state='disabled')
-        self.detail_trigger_combo.pack(side=tk.LEFT, padx=5)
+                                               state='readonly')
+        self.detail_trigger_combo.pack(side=tk.LEFT, padx=5, fill=tk.X, expand=True)
         self.detail_trigger_combo.bind('<<ComboboxSelected>>', self._on_detail_trigger_change)
         
-        # 触发配置详情（只读模式）
-        self.detail_trigger_text = tk.Text(trigger_frame, height=6, wrap=tk.WORD, state='disabled')
-        self.detail_trigger_text.pack(fill=tk.X)
-        
-        # 触发配置编辑区域（编辑模式）
+        # 触发配置编辑区域
         self.detail_trigger_config_frame = ttk.Frame(trigger_frame)
+        self.detail_trigger_config_frame.pack(fill=tk.X, pady=(5, 0))
         
-        # 执行历史
-        history_frame = ttk.LabelFrame(frame, text="执行历史", padding="10")
+        # 执行历史（只读信息）
+        history_frame = ttk.LabelFrame(frame, text="执行状态", padding="10")
         history_frame.pack(fill=tk.X, pady=(0, 10))
         
-        hist_row1 = ttk.Frame(history_frame)
-        hist_row1.pack(fill=tk.X, pady=2)
-        ttk.Label(hist_row1, text="运行次数:").pack(side=tk.LEFT)
+        hist_grid = ttk.Frame(history_frame)
+        hist_grid.pack(fill=tk.X)
+        
+        # 第一行：运行次数和状态
+        row1 = ttk.Frame(hist_grid)
+        row1.pack(fill=tk.X, pady=2)
+        ttk.Label(row1, text="运行次数:", width=12).pack(side=tk.LEFT)
         self.detail_run_count_var = tk.StringVar(value="0")
-        ttk.Label(hist_row1, textvariable=self.detail_run_count_var).pack(side=tk.LEFT, padx=5)
+        ttk.Label(row1, textvariable=self.detail_run_count_var).pack(side=tk.LEFT, padx=5)
         
-        hist_row2 = ttk.Frame(history_frame)
-        hist_row2.pack(fill=tk.X, pady=2)
-        ttk.Label(hist_row2, text="上次运行:").pack(side=tk.LEFT)
+        ttk.Label(row1, text="状态:", width=10).pack(side=tk.LEFT, padx=(20, 0))
+        self.detail_status_var = tk.StringVar()
+        self.detail_status_label = ttk.Label(row1, textvariable=self.detail_status_var, font=('Arial', 9, 'bold'))
+        self.detail_status_label.pack(side=tk.LEFT, padx=5)
+        
+        # 第二行：上次运行
+        row2 = ttk.Frame(hist_grid)
+        row2.pack(fill=tk.X, pady=2)
+        ttk.Label(row2, text="上次运行:", width=12).pack(side=tk.LEFT)
         self.detail_last_run_var = tk.StringVar(value="-")
-        ttk.Label(hist_row2, textvariable=self.detail_last_run_var).pack(side=tk.LEFT, padx=5)
+        ttk.Label(row2, textvariable=self.detail_last_run_var).pack(side=tk.LEFT, padx=5)
         
-        hist_row3 = ttk.Frame(history_frame)
-        hist_row3.pack(fill=tk.X, pady=2)
-        ttk.Label(hist_row3, text="下次运行:").pack(side=tk.LEFT)
+        # 第三行：下次运行
+        row3 = ttk.Frame(hist_grid)
+        row3.pack(fill=tk.X, pady=2)
+        ttk.Label(row3, text="下次运行:", width=12).pack(side=tk.LEFT)
         self.detail_next_run_var = tk.StringVar(value="-")
-        ttk.Label(hist_row3, textvariable=self.detail_next_run_var).pack(side=tk.LEFT, padx=5)
+        ttk.Label(row3, textvariable=self.detail_next_run_var).pack(side=tk.LEFT, padx=5)
         
-        # 错误信息
-        error_frame = ttk.LabelFrame(frame, text="错误信息", padding="10")
-        error_frame.pack(fill=tk.X)
-        
-        self.detail_error_var = tk.StringVar(value="-")
-        ttk.Label(error_frame, textvariable=self.detail_error_var, 
-                 foreground='red', wraplength=300).pack(fill=tk.X)
+        # 错误信息（如有）
+        self.error_frame = ttk.LabelFrame(frame, text="错误信息", padding="10")
+        self.detail_error_var = tk.StringVar(value="")
+        self.error_label = ttk.Label(self.error_frame, textvariable=self.detail_error_var, 
+                                   foreground='red', wraplength=400)
+        self.error_label.pack(fill=tk.X)
         
         # 按钮区域
         btn_frame = ttk.Frame(frame)
-        btn_frame.pack(fill=tk.X, pady=(10, 0))
+        btn_frame.pack(fill=tk.X, pady=(15, 0))
         
         self.save_btn = ttk.Button(btn_frame, text="💾 保存修改", 
                                   command=self._save_task_changes, state='disabled')
@@ -497,18 +493,47 @@ class AutomationDialog:
         """任务选择事件"""
         selection = self.task_tree.selection()
         if not selection:
+            # 清空编辑面板
+            self._clear_edit_panel()
             return
         
         self.selected_task_id = selection[0]
         task = self.manager.get_task(self.selected_task_id)
         if task:
-            self._show_task_detail(task)
+            self._load_task_for_edit(task)
     
-    def _show_task_detail(self, task: AutomationTask):
-        """显示任务详情"""
+    def _clear_edit_panel(self):
+        """清空编辑面板"""
+        self.detail_name_var.set("")
+        self.detail_tool_var.set("未选择任务")
+        self.detail_status_var.set("")
+        self.detail_enabled_var.set(False)
+        self.detail_trigger_type_var.set("")
+        self.detail_run_count_var.set("0")
+        self.detail_last_run_var.set("-")
+        self.detail_next_run_var.set("-")
+        self.detail_error_var.set("")
+        
+        # 隐藏错误信息框
+        self.error_frame.pack_forget()
+        
+        # 清空触发配置编辑区域
+        for widget in self.detail_trigger_config_frame.winfo_children():
+            widget.destroy()
+        
+        # 禁用按钮
+        self.save_btn.configure(state='disabled')
+        self.cancel_btn.configure(state='disabled')
+    
+    def _load_task_for_edit(self, task: AutomationTask):
+        """加载任务到编辑面板"""
+        # 基本信息
         self.detail_name_var.set(task.name)
         self.detail_tool_var.set(f"{task.tool_id} ({task.tool_category})")
         self.detail_status_var.set(self._get_status_text(task.status))
+        self.detail_enabled_var.set(task.enabled)
+        
+        # 执行状态信息
         self.detail_run_count_var.set(str(task.run_count))
         
         # 上次运行
@@ -525,40 +550,284 @@ class AutomationDialog:
         self.detail_next_run_var.set(task.next_run or "-")
         
         # 错误信息
-        self.detail_error_var.set(task.last_error or "-")
+        if task.last_error:
+            self.detail_error_var.set(task.last_error)
+            self.error_frame.pack(fill=tk.X, pady=(0, 10))
+        else:
+            self.error_frame.pack_forget()
         
-        # 触发配置
-        self.detail_trigger_text.configure(state='normal')
-        self.detail_trigger_text.delete('1.0', tk.END)
+        # 设置触发类型
+        trigger_display_name = self._get_trigger_name(task)
+        self.detail_trigger_type_var.set(trigger_display_name)
         
-        trigger_info = f"触发类型: {self._get_trigger_name(task)}\n\n"
+        # 加载触发器配置
+        self._load_trigger_config_for_edit(task)
         
+        # 启用按钮
+        self.save_btn.configure(state='normal')
+        self.cancel_btn.configure(state='normal')
+        
+        # 记录原始任务状态（用于取消编辑）
+        self.original_task_data = {
+            'name': task.name,
+            'enabled': task.enabled,
+            'trigger_type': task.trigger_type,
+            'trigger_config': self._get_task_trigger_config(task)
+        }
+    
+    def _get_task_trigger_config(self, task: AutomationTask) -> dict:
+        """获取任务的触发配置"""
         if task.trigger_type == TriggerType.SCHEDULED.value:
-            config = task.scheduled_config or {}
-            trigger_info += f"执行时间: {config.get('time', '09:00')}\n"
-            trigger_info += f"执行日期: {', '.join(config.get('days', ['everyday']))}"
-        
+            return task.scheduled_config or {}
         elif task.trigger_type == TriggerType.INTERVAL.value:
-            config = task.interval_config or {}
-            unit_map = {'seconds': '秒', 'minutes': '分钟', 'hours': '小时'}
-            trigger_info += f"间隔: 每 {config.get('value', 30)} {unit_map.get(config.get('unit', 'minutes'), '分钟')}"
-        
+            return task.interval_config or {}
         elif task.trigger_type == TriggerType.FILE_WATCH.value:
-            config = task.file_watch_config or {}
-            trigger_info += f"监控路径:\n"
-            for path in config.get('watch_paths', []):
-                trigger_info += f"  - {path}\n"
-            trigger_info += f"防抖: {config.get('debounce_seconds', 5)}秒"
-        
+            return task.file_watch_config or {}
         elif task.trigger_type == TriggerType.TASK_CHAIN.value:
-            config = task.task_chain_config or {}
-            trigger_info += f"任务链:\n"
-            for tid in config.get('tasks', []):
-                t = self.manager.get_task(tid)
-                trigger_info += f"  - {t.name if t else tid}\n"
+            return task.task_chain_config or {}
+        elif task.trigger_type == TriggerType.CUSTOM.value or task.trigger_type == "custom":
+            return task.custom_trigger_config or {}
+        return {}
+    
+    def _load_trigger_config_for_edit(self, task: AutomationTask):
+        """加载触发配置到编辑区域"""
+        # 清空现有配置区域
+        for widget in self.detail_trigger_config_frame.winfo_children():
+            widget.destroy()
         
-        self.detail_trigger_text.insert('1.0', trigger_info)
-        self.detail_trigger_text.configure(state='disabled')
+        trigger_type = task.trigger_type
+        config = self._get_task_trigger_config(task)
+        
+        # 初始化配置控件容器（如果不存在）
+        if not hasattr(self, 'trigger_config_widgets'):
+            self.trigger_config_widgets = {}
+        
+        # 根据触发类型创建编辑控件
+        if trigger_type == TriggerType.SCHEDULED.value:
+            self._create_scheduled_edit_widgets(config)
+        elif trigger_type == TriggerType.INTERVAL.value:
+            self._create_interval_edit_widgets(config)
+        elif trigger_type == TriggerType.FILE_WATCH.value:
+            self._create_file_watch_edit_widgets(config)
+        elif trigger_type == TriggerType.TASK_CHAIN.value:
+            self._create_task_chain_edit_widgets(config)
+        elif trigger_type == TriggerType.CUSTOM.value or trigger_type == "custom":
+            # 获取trigger_script_id
+            trigger_script_id = config.get('trigger_script_id')
+            if trigger_script_id:
+                self._create_custom_edit_widgets(trigger_script_id, config)
+    
+    def _create_interval_edit_widgets(self, config: dict):
+        """创建间隔触发编辑控件"""
+        frame = self.detail_trigger_config_frame
+        
+        row = ttk.Frame(frame)
+        row.pack(fill=tk.X, pady=5)
+        
+        ttk.Label(row, text="每隔").pack(side=tk.LEFT)
+        
+        value_var = tk.StringVar(value=str(config.get('value', 30)))
+        ttk.Entry(row, textvariable=value_var, width=10).pack(side=tk.LEFT, padx=5)
+        
+        unit_var = tk.StringVar(value=config.get('unit', 'minutes'))
+        unit_combo = ttk.Combobox(row, textvariable=unit_var,
+                                values=['seconds', 'minutes', 'hours'],
+                                state='readonly', width=10)
+        unit_combo.pack(side=tk.LEFT, padx=5)
+        
+        ttk.Label(row, text="执行一次").pack(side=tk.LEFT, padx=5)
+        
+        self.trigger_config_widgets = {
+            'interval_value': value_var,
+            'interval_unit': unit_var
+        }
+    
+    def _create_scheduled_edit_widgets(self, config: dict):
+        """创建定时触发编辑控件"""
+        frame = self.detail_trigger_config_frame
+        
+        # 时间设置
+        time_row = ttk.Frame(frame)
+        time_row.pack(fill=tk.X, pady=5)
+        
+        ttk.Label(time_row, text="执行时间:").pack(side=tk.LEFT)
+        
+        time_str = config.get('time', '09:00')
+        hour, minute = time_str.split(':') if ':' in time_str else ('09', '00')
+        
+        hour_var = tk.StringVar(value=hour)
+        ttk.Spinbox(time_row, from_=0, to=23, textvariable=hour_var,
+                   width=3, format="%02.0f").pack(side=tk.LEFT, padx=5)
+        
+        ttk.Label(time_row, text=":").pack(side=tk.LEFT)
+        
+        minute_var = tk.StringVar(value=minute)
+        ttk.Spinbox(time_row, from_=0, to=59, textvariable=minute_var,
+                   width=3, format="%02.0f").pack(side=tk.LEFT, padx=5)
+        
+        # 日期选择
+        day_row = ttk.Frame(frame)
+        day_row.pack(fill=tk.X, pady=5)
+        
+        ttk.Label(day_row, text="执行日期:").pack(side=tk.LEFT)
+        
+        days_var = tk.StringVar(value=','.join(config.get('days', ['everyday'])))
+        ttk.Entry(day_row, textvariable=days_var, width=30).pack(side=tk.LEFT, padx=5)
+        
+        self.trigger_config_widgets = {
+            'scheduled_hour': hour_var,
+            'scheduled_minute': minute_var,
+            'scheduled_days': days_var
+        }
+    
+    def _create_file_watch_edit_widgets(self, config: dict):
+        """创建文件监控编辑控件"""
+        frame = self.detail_trigger_config_frame
+        
+        ttk.Label(frame, text="监控路径:").pack(anchor=tk.W, pady=(0, 5))
+        
+        paths_var = tk.StringVar(value='\n'.join(config.get('watch_paths', [])))
+        paths_text = tk.Text(frame, height=4, width=50)
+        paths_text.pack(fill=tk.X, pady=(0, 5))
+        paths_text.insert('1.0', paths_var.get())
+        
+        debounce_row = ttk.Frame(frame)
+        debounce_row.pack(fill=tk.X, pady=5)
+        
+        ttk.Label(debounce_row, text="防抖延迟(秒):").pack(side=tk.LEFT)
+        debounce_var = tk.StringVar(value=str(config.get('debounce_seconds', 5)))
+        ttk.Entry(debounce_row, textvariable=debounce_var, width=10).pack(side=tk.LEFT, padx=5)
+        
+        self.trigger_config_widgets = {
+            'watch_paths_text': paths_text,
+            'debounce_seconds': debounce_var
+        }
+    
+    def _create_task_chain_edit_widgets(self, config: dict):
+        """创建任务链编辑控件"""
+        frame = self.detail_trigger_config_frame
+        
+        ttk.Label(frame, text="任务列表（每行一个任务ID）:").pack(anchor=tk.W, pady=(0, 5))
+        
+        tasks_var = tk.StringVar(value='\n'.join(config.get('tasks', [])))
+        tasks_text = tk.Text(frame, height=4, width=50)
+        tasks_text.pack(fill=tk.X, pady=(0, 5))
+        tasks_text.insert('1.0', tasks_var.get())
+        
+        self.trigger_config_widgets = {
+            'tasks_text': tasks_text
+        }
+    
+    def _create_custom_edit_widgets(self, trigger_script_id: str, config: dict):
+        """创建自定义触发器编辑控件"""
+        frame = self.detail_trigger_config_frame
+        
+        # 获取触发器类
+        if hasattr(self, 'trigger_manager') and self.trigger_manager:
+            trigger_cls = self.trigger_manager._trigger_classes.get(trigger_script_id)
+            if trigger_cls and hasattr(trigger_cls, 'TRIGGER_PARAMETERS'):
+                params = trigger_cls.TRIGGER_PARAMETERS
+                widgets = {}
+                
+                for param_name, param_def in params.items():
+                    param_row = ttk.Frame(frame)
+                    param_row.pack(fill=tk.X, pady=2)
+                    
+                    desc = param_def.get('description', param_name)
+                    ttk.Label(param_row, text=f"{desc}:").pack(side=tk.LEFT, anchor=tk.W, width=15)
+                    
+                    value = config.get(param_name, param_def.get('default', ''))
+                    
+                    if param_def.get('type') == 'boolean':
+                        var = tk.BooleanVar(value=bool(value))
+                        ttk.Checkbutton(param_row, variable=var).pack(side=tk.LEFT, padx=5)
+                    elif param_def.get('type') == 'integer':
+                        var = tk.IntVar(value=int(value) if str(value).isdigit() else 0)
+                        ttk.Spinbox(param_row, textvariable=var, from_=0, to=9999, width=10).pack(side=tk.LEFT, padx=5)
+                    elif param_def.get('type') == 'choice':
+                        var = tk.StringVar(value=str(value))
+                        choices = list(param_def.get('choices', {}).keys())
+                        ttk.Combobox(param_row, textvariable=var, values=choices, state='readonly').pack(side=tk.LEFT, padx=5)
+                    else:
+                        var = tk.StringVar(value=str(value))
+                        ttk.Entry(param_row, textvariable=var, width=20).pack(side=tk.LEFT, padx=5)
+                    
+                    widgets[param_name] = var
+                
+                # 添加trigger_script_id到配置
+                widgets['trigger_script_id'] = tk.StringVar(value=trigger_script_id)
+                self.trigger_config_widgets = widgets
+        
+    def _collect_trigger_config_from_widgets(self) -> dict:
+        """从控件收集触发器配置"""
+        if not hasattr(self, 'trigger_config_widgets') or not self.trigger_config_widgets:
+            return {}
+        
+        config = {}
+        widgets = self.trigger_config_widgets
+        
+        # 间隔触发器
+        if 'interval_value' in widgets:
+            config['value'] = int(widgets['interval_value'].get())
+            config['unit'] = widgets['interval_unit'].get()
+        
+        # 定时触发器
+        elif 'scheduled_hour' in widgets:
+            hour = widgets['scheduled_hour'].get().zfill(2)
+            minute = widgets['scheduled_minute'].get().zfill(2)
+            config['time'] = f"{hour}:{minute}"
+            days_str = widgets['scheduled_days'].get()
+            config['days'] = [d.strip() for d in days_str.split(',') if d.strip()]
+        
+        # 文件监控
+        elif 'watch_paths_text' in widgets:
+            paths_text = widgets['watch_paths_text'].get('1.0', tk.END).strip()
+            config['watch_paths'] = [p.strip() for p in paths_text.split('\n') if p.strip()]
+            config['debounce_seconds'] = int(widgets['debounce_seconds'].get())
+        
+        # 任务链
+        elif 'tasks_text' in widgets:
+            tasks_text = widgets['tasks_text'].get('1.0', tk.END).strip()
+            config['tasks'] = [t.strip() for t in tasks_text.split('\n') if t.strip()]
+        
+        # 自定义触发器
+        elif 'trigger_script_id' in widgets:
+            for name, var in widgets.items():
+                if name == 'trigger_script_id':
+                    config[name] = var.get()
+                else:
+                    value = var.get()
+                    config[name] = value
+        
+        return config
+    
+    def _format_config_parameters(self, title: str, config: dict) -> str:
+        """格式化配置参数显示"""
+        if not config:
+            return ""
+        
+        result = f"\n{title}:\n"
+        for key, value in config.items():
+            # 跳过一些内部字段
+            if key in ['trigger_script_id']:
+                continue
+            
+            # 格式化值
+            if isinstance(value, bool):
+                display_value = "是" if value else "否"
+            elif isinstance(value, list):
+                if len(value) > 3:
+                    display_value = f"[{', '.join(map(str, value[:3]))}...] ({len(value)}项)"
+                else:
+                    display_value = f"[{', '.join(map(str, value))}]"
+            elif isinstance(value, dict):
+                display_value = f"{{...}} ({len(value)}项)"
+            else:
+                display_value = str(value)
+            
+            result += f"  • {key}: {display_value}\n"
+        
+        return result
     
     def _get_status_icon(self, status: str) -> str:
         """获取状态图标"""
@@ -663,49 +932,6 @@ class AutomationDialog:
             # 强制更新UI
             self.dialog.update_idletasks()
     
-    def _toggle_edit_mode(self):
-        """切换编辑模式"""
-        self.is_editing = not self.is_editing
-        
-        if self.is_editing:
-            self.edit_mode_btn.config(text="👁 查看")
-            self._enable_editing()
-        else:
-            self.edit_mode_btn.config(text="📝 编辑")
-            self._disable_editing()
-    
-    def _enable_editing(self):
-        """启用编辑模式"""
-        # 启用控件
-        self.detail_name_entry.config(state='normal')
-        self.detail_enabled_check.config(state='normal')
-        self.detail_trigger_combo.config(state='readonly')
-        self.save_btn.config(state='normal')
-        self.cancel_btn.config(state='normal')
-        
-        # 隐藏只读文本，显示编辑控件
-        self.detail_trigger_text.pack_forget()
-        self.detail_trigger_config_frame.pack(fill=tk.X, pady=5)
-        
-        # 根据当前触发类型创建编辑控件
-        if self.selected_task_id:
-            task = self.manager.get_task(self.selected_task_id)
-            if task:
-                # 将内部值转换为显示值
-                # 获取实际的触发器名称
-                actual_trigger_name = get_actual_trigger_name_from_task(task)
-                
-                display_value = self.trigger_display_map.get(actual_trigger_name, actual_trigger_name)
-                self.detail_trigger_type_var.set(display_value)
-                self.detail_enabled_var.set(task.enabled)
-                self._create_trigger_edit_config(task)
-    
-    def _disable_editing(self):
-        """禁用编辑模式"""
-        # 禁用控件
-        self.detail_name_entry.config(state='readonly')
-        self.detail_enabled_check.config(state='disabled')
-        self.detail_trigger_combo.config(state='disabled')
         self.save_btn.config(state='disabled')
         self.cancel_btn.config(state='disabled')
         
@@ -720,51 +946,50 @@ class AutomationDialog:
     
     def _cancel_edit(self):
         """取消编辑"""
+        if self.selected_task_id and hasattr(self, 'original_task_data'):
+            # 恢复原始数据
+            self.detail_name_var.set(self.original_task_data['name'])
+            self.detail_enabled_var.set(self.original_task_data['enabled'])
+            
+            # 重新加载任务
+            task = self.manager.get_task(self.selected_task_id)
+            if task:
+                self._load_task_for_edit(task)
+    
+    def _on_detail_trigger_change(self, event):
+        """触发类型变更"""
         if self.selected_task_id:
             task = self.manager.get_task(self.selected_task_id)
             if task:
-                self._show_task_detail(task)  # 重新加载数据
-        self._toggle_edit_mode()  # 切换到查看模式
+                # 获取新选择的触发器类型
+                selected_display = self.detail_trigger_type_var.get()
+                selected_trigger = self.trigger_value_map.get(selected_display, selected_display)
+                
+                # 创建对应的配置控件（使用默认配置）
+                self._create_trigger_config_widgets_by_type(selected_trigger)
     
-    def _on_detail_trigger_change(self, event):
-        """详情页触发类型变更"""
-        if self.is_editing and self.selected_task_id:
-            task = self.manager.get_task(self.selected_task_id)
-            if task:
-                self._create_trigger_edit_config(task)
-    
-    def _create_trigger_edit_config(self, task: AutomationTask):
-        """创建触发配置编辑界面"""
+    def _create_trigger_config_widgets_by_type(self, trigger_type: str):
+        """根据触发器类型创建配置控件"""
         # 清空现有控件
         for widget in self.detail_trigger_config_frame.winfo_children():
             widget.destroy()
-        self.trigger_edit_widgets.clear()
         
-        trigger_display = self.detail_trigger_type_var.get()
-        trigger_type = self.trigger_value_map.get(trigger_display, trigger_display)
-        
-        # 获取实际的触发器名称
-        actual_trigger_name = get_actual_trigger_name_from_task(task)
-        
-        # 查找对应的触发器脚本信息
-        trigger_info = None
-        for info in self.discovered_triggers:
-            if info.name == actual_trigger_name:
-                trigger_info = info
-                break
-        
-        if trigger_info:
-            self._create_dynamic_trigger_edit_config(task, trigger_info)
-        else:
-            # 兼容旧格式
-            if trigger_type == 'interval':
-                self._create_interval_edit_config(task)
-            elif trigger_type == 'scheduled':
-                self._create_scheduled_edit_config(task)
-            elif trigger_type == 'file_watch':
-                self._create_file_watch_edit_config(task)
-            elif trigger_type == 'task_chain':
-                self._create_task_chain_edit_config(task)
+        # 根据类型创建控件（使用默认配置）
+        if trigger_type == TriggerType.SCHEDULED.value:
+            self._create_scheduled_edit_widgets({})
+        elif trigger_type == TriggerType.INTERVAL.value:
+            self._create_interval_edit_widgets({})
+        elif trigger_type == TriggerType.FILE_WATCH.value:
+            self._create_file_watch_edit_widgets({})
+        elif trigger_type == TriggerType.TASK_CHAIN.value:
+            self._create_task_chain_edit_widgets({})
+        elif trigger_type in self.trigger_value_map.values():
+            # 查找自定义触发器
+            for display_name, script_id in self.trigger_value_map.items():
+                if script_id == trigger_type:
+                    self._create_custom_edit_widgets(script_id, {})
+                    break
+    
     
     def _create_interval_edit_config(self, task: AutomationTask):
         """创建间隔触发编辑配置"""
@@ -1075,10 +1300,10 @@ class AutomationDialog:
             # 将显示值转换回内部值
             trigger_type = self.trigger_value_map.get(trigger_display, trigger_display)
             
-            # 收集触发配置
-            trigger_config = self._collect_trigger_config(trigger_type)
-            if trigger_config is None:
-                return  # 验证失败
+            # 收集触发配置（复用CreateTaskDialog的方法）
+            trigger_config = {}
+            if hasattr(self, 'trigger_config_widgets') and self.trigger_config_widgets:
+                trigger_config = self._collect_trigger_config_from_widgets()
             
             # 更新任务
             self.manager.update_task_full(
@@ -1093,13 +1318,10 @@ class AutomationDialog:
             self._refresh_task_list()
             task = self.manager.get_task(self.selected_task_id)
             if task:
-                self._show_task_detail(task)
+                self._load_task_for_edit(task)
             
             # 强制更新UI
             self.dialog.update_idletasks()
-            
-            # 切换到查看模式
-            self._toggle_edit_mode()
             
             messagebox.showinfo("提示", "保存成功")
             
