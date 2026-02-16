@@ -660,11 +660,13 @@ class CreateTaskDialog:
         
         # 所有触发器（包括内置和自定义）都来自 trigger_manager 的发现结果
         for trigger_info in self.custom_triggers:
-            # 使用 display_name 作为显示名称（已经是中文）
-            display_name = trigger_info.display_name
+            # 使用 display_name 作为显示名称，并添加来源标识
+            source_label = "📁 共享" if trigger_info.source == "shared" else "💻 本地"
+            display_name = f"{trigger_info.display_name} ({source_label})"
+            
             options.append((
                 trigger_info.name,         # trigger ID
-                display_name,              # 中文显示名
+                display_name,              # 中文显示名 + 来源标识
                 trigger_info.description,  # 描述
                 trigger_info.file_path     # 脚本文件路径
             ))
