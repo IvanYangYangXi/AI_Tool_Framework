@@ -241,6 +241,8 @@ class AutomationManager:
                 task.file_watch_config = trigger_config
             elif trigger_type == TriggerType.TASK_CHAIN:
                 task.task_chain_config = trigger_config
+            elif trigger_type == TriggerType.CUSTOM:
+                task.custom_trigger_config = trigger_config
         
         # 计算下次运行时间
         task.next_run = self._calculate_next_run(task)
@@ -263,6 +265,52 @@ class AutomationManager:
                 if hasattr(task, key):
                     setattr(task, key, value)
             
+            task.updated_at = datetime.now().isoformat()
+            task.next_run = self._calculate_next_run(task)
+            
+            self._save_tasks()
+            return task
+    
+    def update_task_full(self, task_id: str, name: str = None, trigger_type: TriggerType = None,
+                        enabled: bool = None, trigger_config: Dict[str, Any] = None) -> Optional[AutomationTask]:
+        """完整更新任务（包括触发器配置）"""
+        with self._lock:
+            if task_id not in self.tasks:
+                return None
+            
+            task = self.tasks[task_id]
+            
+            # 更新基本信息
+            if name is not None:
+                task.name = name
+            if enabled is not None:
+                task.enabled = enabled
+            
+            # 更新触发器类型和配置
+            if trigger_type is not None:
+                task.trigger_type = trigger_type.value
+                
+                # 清除旧的配置
+                task.interval_config = None
+                task.scheduled_config = None  
+                task.file_watch_config = None
+                task.task_chain_config = None
+                task.custom_trigger_config = None
+                
+                # 设置新配置
+                if trigger_config:
+                    if trigger_type == TriggerType.INTERVAL:
+                        task.interval_config = trigger_config
+                    elif trigger_type == TriggerType.SCHEDULED:
+                        task.scheduled_config = trigger_config
+                    elif trigger_type == TriggerType.FILE_WATCH:
+                        task.file_watch_config = trigger_config
+                    elif trigger_type == TriggerType.TASK_CHAIN:
+                        task.task_chain_config = trigger_config
+                    elif trigger_type == TriggerType.CUSTOM:
+                        task.custom_trigger_config = trigger_config
+            
+            # 重新计算下次运行时间
             task.updated_at = datetime.now().isoformat()
             task.next_run = self._calculate_next_run(task)
             

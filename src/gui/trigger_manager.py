@@ -1067,9 +1067,28 @@ TriggerClass = TimeWindowTrigger
         try:
             # 确保项目根路径在 sys.path 中（为了让触发器脚本能导入 src 模块）
             import sys
-            project_root = Path(__file__).parent.parent.parent  # 从 src/gui/trigger_manager.py 向上3层到项目根
-            if str(project_root) not in sys.path:
-                sys.path.insert(0, str(project_root))
+            import os
+            
+            # 尝试多种方式获取项目根路径
+            current_working_dir = Path(os.getcwd())
+            trigger_manager_file = Path(__file__).resolve()
+            
+            # 方式1: 从 trigger_manager.py 文件路径推算
+            project_root_1 = trigger_manager_file.parent.parent.parent  # src/gui/trigger_manager.py -> 项目根
+            
+            # 方式2: 从当前工作目录推算（假设在项目根运行）
+            project_root_2 = current_working_dir
+            
+            # 方式3: 硬编码已知路径
+            project_root_3 = Path("d:/MyProject_D/AI_Tool_Framework")
+            
+            # 选择一个存在且包含 src 目录的路径
+            for project_root in [project_root_1, project_root_2, project_root_3]:
+                if project_root.exists() and (project_root / "src").exists():
+                    if str(project_root) not in sys.path:
+                        sys.path.insert(0, str(project_root))
+                        print(f"[DEBUG] 添加项目根路径到 sys.path: {project_root}")
+                    break
             
             # 动态加载模块
             spec = importlib.util.spec_from_file_location(
@@ -1085,13 +1104,33 @@ TriggerClass = TimeWindowTrigger
                 # 尝试查找 BaseTrigger 的子类
                 for name, obj in vars(module).items():
                     if (isinstance(obj, type) and 
-                        issubclass(obj, BaseTrigger) and 
-                        obj is not BaseTrigger):
-                        trigger_class = obj
-                        break
+                        hasattr(obj, 'TRIGGER_NAME') and
+                        name != 'BaseTrigger'):
+                        # 检查是否是 BaseTrigger 的子类（通过名称）
+                        try:
+                            if any(base.__name__ == 'BaseTrigger' for base in obj.__mro__):
+                                trigger_class = obj
+                                break
+                        except:
+                            continue
             
             if trigger_class is None:
+                # 调试信息：列出模块中的所有类
+                module_classes = []
+                for name, obj in vars(module).items():
+                    if isinstance(obj, type):
+                        module_classes.append(f"{name} (bases: {[base.__name__ for base in obj.__bases__]})")
+                
                 logger.warning(f"未找到触发器类: {file_path}")
+                logger.warning(f"模块中的类: {module_classes}")
+                
+                # 检查 BaseTrigger 是否可用
+                try:
+                    from src.gui.trigger_manager import BaseTrigger as TestBase
+                    logger.warning(f"BaseTrigger 可用: {TestBase}")
+                except ImportError as ie:
+                    logger.warning(f"BaseTrigger 不可用: {ie}")
+                
                 return None
             
             # 提取信息
@@ -1115,6 +1154,8 @@ TriggerClass = TimeWindowTrigger
             
         except Exception as e:
             logger.error(f"解析触发器失败 {file_path}: {e}")
+            import traceback
+            logger.error(f"详细错误信息: {traceback.format_exc()}")
             return None
     
     def get_trigger_class(self, trigger_id: str) -> Optional[Type[BaseTrigger]]:

@@ -15,6 +15,72 @@ from datetime import datetime
 import tempfile
 import io
 
+
+class ToolTip:
+    """
+    工具提示类 - 鼠标悬停显示完整信息
+    """
+    def __init__(self, widget, text=''):
+        self.widget = widget
+        self.text = text
+        self.tipwindow = None
+        self.id = None
+        self.x = self.y = 0
+        
+        self.widget.bind('<Enter>', self.enter)
+        self.widget.bind('<Leave>', self.leave)
+        self.widget.bind('<Motion>', self.motion)
+    
+    def enter(self, event=None):
+        self.schedule()
+    
+    def leave(self, event=None):
+        self.unschedule()
+        self.hidetip()
+    
+    def motion(self, event=None):
+        self.unschedule()
+        self.schedule()
+    
+    def schedule(self):
+        self.unschedule()
+        self.id = self.widget.after(500, self.showtip)  # 500ms延迟
+    
+    def unschedule(self):
+        if self.id:
+            self.widget.after_cancel(self.id)
+            self.id = None
+    
+    def showtip(self, event=None):
+        if not self.text:
+            return
+        
+        try:
+            x, y, cx, cy = self.widget.bbox("insert") if hasattr(self.widget, 'bbox') else (0, 0, 0, 0)
+        except:
+            x, y, cx, cy = 0, 0, 0, 0
+        
+        x += self.widget.winfo_rootx() + 25
+        y += self.widget.winfo_rooty() + 25
+        
+        self.tipwindow = tw = tk.Toplevel(self.widget)
+        tw.wm_overrideredirect(True)
+        tw.wm_geometry(f"+{x}+{y}")
+        
+        label = tk.Label(tw, text=self.text, justify='left',
+                        background='#ffffe0', relief='solid', borderwidth=1,
+                        font=('tahoma', '8', 'normal'), wraplength=300)
+        label.pack(ipadx=5, ipady=3)
+    
+    def hidetip(self):
+        tw = self.tipwindow
+        self.tipwindow = None
+        if tw:
+            tw.destroy()
+    
+    def update_text(self, text):
+        self.text = text
+
 # 解决相对导入问题
 if __name__ == "__main__":
     # 直接运行时使用绝对导入
@@ -1527,10 +1593,15 @@ DCC工具管理器 v1.0.0
         row = 0
         for param_name, param_info in tool_info['parameters'].items():
             # 参数标签
-            ttk.Label(self.param_frame_inner, 
+            label = ttk.Label(self.param_frame_inner, 
                      text=f"{param_name}:", 
-                     font=('Arial', 9, 'bold')).grid(row=row, column=0, 
-                                                    sticky=tk.W, pady=5, padx=(0, 10))
+                     font=('Arial', 9, 'bold'))
+            label.grid(row=row, column=0, sticky=tk.W, pady=5, padx=(0, 10))
+            
+            # 构建工具提示文本
+            tooltip_text = self._build_param_tooltip(param_name, param_info)
+            if tooltip_text:
+                ToolTip(label, tooltip_text)
             
             # 参数控件
             param_type = param_info.get('type', 'string')
@@ -1552,16 +1623,73 @@ DCC工具管理器 v1.0.0
             
             widget.grid(row=row, column=1, sticky=tk.W, pady=5)
             
+            # 为控件也添加工具提示
+            if tooltip_text:
+                ToolTip(widget, tooltip_text)
+            
             # 参数说明
             desc = param_info.get('description', '')
             if desc:
-                ttk.Label(self.param_frame_inner, 
+                desc_label = ttk.Label(self.param_frame_inner, 
                          text=f"({desc})", 
                          foreground='gray',
-                         font=('Arial', 8)).grid(row=row, column=2, sticky=tk.W, padx=(10, 0))
+                         font=('Arial', 8))
+                desc_label.grid(row=row, column=2, sticky=tk.W, padx=(10, 0))
+                # 为描述标签也添加工具提示
+                if tooltip_text:
+                    ToolTip(desc_label, tooltip_text)
             
             self.param_vars[param_name] = var
             row += 1
+    
+    def _build_param_tooltip(self, param_name: str, param_def: dict) -> str:
+        """构建参数工具提示文本"""
+        tooltip_lines = [f"参数: {param_name}"]
+        
+        # 类型
+        param_type = param_def.get('type', 'string')
+        tooltip_lines.append(f"类型: {param_type}")
+        
+        # 描述
+        desc = param_def.get('description', '')
+        if desc:
+            tooltip_lines.append(f"描述: {desc}")
+        
+        # 默认值
+        default = param_def.get('default', '')
+        if default != '':
+            tooltip_lines.append(f"默认值: {default}")
+        
+        # 范围
+        if 'min' in param_def and 'max' in param_def:
+            tooltip_lines.append(f"范围: {param_def['min']} ~ {param_def['max']}")
+        elif 'min' in param_def:
+            tooltip_lines.append(f"最小值: {param_def['min']}")
+        elif 'max' in param_def:
+            tooltip_lines.append(f"最大值: {param_def['max']}")
+        
+        # 选项
+        if 'choices' in param_def:
+            choices = param_def['choices']
+            if isinstance(choices, list) and choices:
+                tooltip_lines.append(f"可选值: {', '.join(map(str, choices))}")
+        
+        # 注释
+        comment = param_def.get('comment', '')
+        if comment:
+            tooltip_lines.append(f"注释: {comment}")
+        
+        # 示例
+        example = param_def.get('example', '')
+        if example:
+            tooltip_lines.append(f"示例: {example}")
+        
+        # 是否必需
+        required = param_def.get('required', False)
+        if required:
+            tooltip_lines.append("必需参数")
+        
+        return '\n'.join(tooltip_lines)
     
     def connect_dcc(self):
         """连接到DCC软件"""
