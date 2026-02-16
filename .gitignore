@@ -178,3 +178,16 @@ local_settings.json
 
 # GUI Testing Directory (DO NOT COMMIT - Contains local test data, logs, and screenshots)
 debug_tests/
+
+# Temporary test files
+test_*.py
+simple_edit_test.py
+test_automation_data/
+tasks/
+
+# Automation task data (local runtime data)
+configs/automation_tasks.json
+
+# OpenSpec temporary files
+openspec/changes/*.md
+!openspec/changes/archive/
