@@ -517,11 +517,6 @@ class LightweightDCCManager:
         
         auto_menu.add_command(label="⏰ 任务管理...", command=self._show_automation_dialog)
         auto_menu.add_separator()
-        auto_menu.add_command(label="➕ 为当前工具创建定时任务", 
-                             command=self._create_scheduled_task_for_current)
-        auto_menu.add_command(label="➕ 为当前工具创建间隔任务", 
-                             command=self._create_interval_task_for_current)
-        auto_menu.add_separator()
         
         # 调度器控制
         self.scheduler_running_var = tk.BooleanVar(value=True)
@@ -1310,18 +1305,7 @@ DCC工具管理器 v1.0.0
         bottom_frame = ttk.Frame(parent)
         parent.add(bottom_frame, weight=1)  # 日志面板占1份
         
-        # Git控制 - 固定在顶部
-        git_frame = ttk.LabelFrame(bottom_frame, text="Git管理", padding="5")
-        git_frame.pack(fill=tk.X, expand=False, pady=(0, 5))
-        
-        ttk.Button(git_frame, text="⬇️ 更新到最新版本", 
-                  command=self.update_git_repo).pack(side=tk.LEFT, padx=(0, 5))
-        ttk.Button(git_frame, text="🔍 检查更新", 
-                  command=self.check_git_updates).pack(side=tk.LEFT, padx=(0, 5))
-        ttk.Button(git_frame, text="📋 查看变更日志", 
-                  command=self.show_changelog).pack(side=tk.LEFT)
-        
-        # 日志区域 - 占据剩余空间，放在最下面
+        # 日志区域 - 占据全部空间
         log_frame = ttk.LabelFrame(bottom_frame, text="操作日志", padding="5")
         log_frame.pack(fill=tk.BOTH, expand=True)
         
@@ -4320,10 +4304,12 @@ for key, value in {params}.items():
         
         ttk.Label(add_frame, text="图标:").grid(row=1, column=0, sticky=tk.W, pady=5)
         
-        # 图标选择区域
+        # 图标输入/选择区域
         icon_var = tk.StringVar(value="📁")
-        icon_display = ttk.Label(add_frame, textvariable=icon_var, font=('', 16), width=3)
-        icon_display.grid(row=1, column=1, sticky=tk.W, padx=5)
+        
+        # 图标输入框 - 支持直接输入emoji
+        icon_entry = ttk.Entry(add_frame, textvariable=icon_var, width=5, font=('', 14))
+        icon_entry.grid(row=1, column=1, sticky=tk.W, padx=5)
         
         # 可选图标列表
         available_icons = [
@@ -4337,14 +4323,14 @@ for key, value in {params}.items():
             """显示图标选择器"""
             picker = tk.Toplevel(dialog)
             picker.title("选择图标")
-            picker.geometry("300x200")
+            picker.geometry("320x250")
             picker.transient(dialog)
             picker.grab_set()
             
             # 居中显示
             picker.update_idletasks()
-            px = dialog.winfo_x() + (dialog.winfo_width() - 300) // 2
-            py = dialog.winfo_y() + (dialog.winfo_height() - 200) // 2
+            px = dialog.winfo_x() + (dialog.winfo_width() - 320) // 2
+            py = dialog.winfo_y() + (dialog.winfo_height() - 250) // 2
             picker.geometry(f"+{px}+{py}")
             
             ttk.Label(picker, text="点击选择图标:").pack(pady=5)
@@ -4371,13 +4357,24 @@ for key, value in {params}.items():
                     col = 0
                     row += 1
             
-            ttk.Button(picker, text="取消", command=picker.destroy).pack(pady=5)
+            # 手动输入提示
+            tip_frame = ttk.Frame(picker)
+            tip_frame.pack(fill=tk.X, padx=10, pady=(10, 5))
+            ttk.Label(tip_frame, text="💡 手动输入方法:", font=('', 9, 'bold')).pack(anchor=tk.W)
+            ttk.Label(tip_frame, text="  Windows: Win+. 打开Emoji面板", font=('', 8)).pack(anchor=tk.W)
+            ttk.Label(tip_frame, text="  或直接在输入框粘贴Emoji字符", font=('', 8)).pack(anchor=tk.W)
+            
+            ttk.Button(picker, text="关闭", command=picker.destroy).pack(pady=5)
         
         ttk.Button(add_frame, text="选择...", width=6, command=show_icon_picker).grid(row=1, column=2, padx=5)
         
+        # 输入提示
+        tip_label = ttk.Label(add_frame, text="💡 可直接输入Emoji (Win+. 打开面板)", font=('', 8), foreground='gray')
+        tip_label.grid(row=2, column=0, columnspan=3, sticky=tk.W, pady=(5, 0))
+        
         def add_group():
             name = name_entry.get().strip()
-            icon = icon_var.get() or "📁"
+            icon = icon_var.get().strip() or "📁"
             
             if not name:
                 messagebox.showwarning("提示", "请输入分组名称")
@@ -4397,7 +4394,7 @@ for key, value in {params}.items():
             
             self.log_message(f"✓ 已添加自定义分组: {name}")
         
-        ttk.Button(add_frame, text="添加", command=add_group).grid(row=2, column=0, columnspan=3, pady=(10, 0))
+        ttk.Button(add_frame, text="添加", command=add_group).grid(row=3, column=0, columnspan=3, pady=(10, 0))
         
         # 关闭按钮
         ttk.Button(dialog, text="关闭", command=dialog.destroy).pack(pady=10)

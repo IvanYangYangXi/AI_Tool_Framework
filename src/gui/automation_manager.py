@@ -179,6 +179,13 @@ class AutomationManager:
                     data = json.load(f)
                     for task_data in data.get("tasks", []):
                         task = AutomationTask.from_dict(task_data)
+                        # 根据 enabled 状态修正 status
+                        if task.enabled:
+                            # 如果任务启用，状态应该是 waiting（除非正在运行或出错）
+                            if task.status not in ['running', 'error']:
+                                task.status = 'waiting'
+                        else:
+                            task.status = 'paused'
                         self.tasks[task.id] = task
                 logger.info(f"加载了 {len(self.tasks)} 个自动化任务")
             except Exception as e:
@@ -228,7 +235,8 @@ class AutomationManager:
             tool_id=tool_id,
             tool_category=tool_category,
             execution_mode=execution_mode,
-            parameters=parameters or {}
+            parameters=parameters or {},
+            status="waiting"  # 新建任务默认为等待状态
         )
         
         # 设置触发器配置
