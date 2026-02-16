@@ -533,15 +533,36 @@ class LightweightDCCManager:
         setattr(self, f"{category_key}_tree", tree)
     
     def create_execution_panel(self, parent):
-        """创建执行面板"""
+        """创建执行面板（带滚动条）"""
         exec_frame = ttk.Frame(parent)
         parent.add(exec_frame, weight=2)
         
-        # 工具详情区域
-        detail_frame = ttk.LabelFrame(exec_frame, text="工具详情", padding="10")
-        detail_frame.pack(fill=tk.X, pady=(0, 10))
+        # 创建可滚动的容器
+        exec_canvas = tk.Canvas(exec_frame, highlightthickness=0)
+        exec_scrollbar = ttk.Scrollbar(exec_frame, orient=tk.VERTICAL, command=exec_canvas.yview)
+        exec_scroll_frame = ttk.Frame(exec_canvas)
         
-        self.detail_text = tk.Text(detail_frame, height=6, wrap=tk.WORD)
+        exec_scroll_frame.bind(
+            "<Configure>",
+            lambda e: exec_canvas.configure(scrollregion=exec_canvas.bbox("all"))
+        )
+        
+        exec_canvas.create_window((0, 0), window=exec_scroll_frame, anchor="nw")
+        exec_canvas.configure(yscrollcommand=exec_scrollbar.set)
+        
+        # 绑定鼠标滚轮
+        def _on_mousewheel(event):
+            exec_canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+        exec_canvas.bind_all("<MouseWheel>", _on_mousewheel)
+        
+        exec_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        exec_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        
+        # 工具详情区域
+        detail_frame = ttk.LabelFrame(exec_scroll_frame, text="工具详情", padding="10")
+        detail_frame.pack(fill=tk.X, pady=(0, 10), padx=5)
+        
+        self.detail_text = tk.Text(detail_frame, height=5, wrap=tk.WORD)
         detail_scroll = ttk.Scrollbar(detail_frame, orient=tk.VERTICAL, 
                                      command=self.detail_text.yview)
         self.detail_text.configure(yscrollcommand=detail_scroll.set)
@@ -550,29 +571,16 @@ class LightweightDCCManager:
         detail_scroll.pack(side=tk.RIGHT, fill=tk.Y)
         
         # 参数配置区域
-        param_frame = ttk.LabelFrame(exec_frame, text="参数配置", padding="10")
-        param_frame.pack(fill=tk.X, pady=(0, 10))
+        param_frame = ttk.LabelFrame(exec_scroll_frame, text="参数配置", padding="10")
+        param_frame.pack(fill=tk.X, pady=(0, 10), padx=5)
         
-        # 参数配置画布
-        self.param_canvas = tk.Canvas(param_frame)
-        param_scroll = ttk.Scrollbar(param_frame, orient=tk.VERTICAL, 
-                                    command=self.param_canvas.yview)
-        self.param_frame_inner = ttk.Frame(self.param_canvas)
-        
-        self.param_frame_inner.bind(
-            "<Configure>",
-            lambda e: self.param_canvas.configure(scrollregion=self.param_canvas.bbox("all"))
-        )
-        
-        self.param_canvas.create_window((0, 0), window=self.param_frame_inner, anchor="nw")
-        self.param_canvas.configure(yscrollcommand=param_scroll.set)
-        
-        self.param_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        param_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+        # 参数配置内部框架
+        self.param_frame_inner = ttk.Frame(param_frame)
+        self.param_frame_inner.pack(fill=tk.X, expand=True)
         
         # 执行控制区域
-        control_frame = ttk.LabelFrame(exec_frame, text="执行控制", padding="10")
-        control_frame.pack(fill=tk.X, pady=(0, 10))
+        control_frame = ttk.LabelFrame(exec_scroll_frame, text="执行控制", padding="10")
+        control_frame.pack(fill=tk.X, pady=(0, 10), padx=5)
         
         # 执行按钮 - 第一行
         button_frame = ttk.Frame(control_frame)
@@ -584,13 +592,13 @@ class LightweightDCCManager:
         
         self.run_standalone_btn = ttk.Button(button_frame, text="🖥️ 独立运行", 
                                             command=self.run_standalone)
-        self.run_standalone_btn.pack(side=tk.LEFT, padx=(0, 5), fill=tk.X, expand=True)
+        self.run_standalone_btn.pack(side=tk.LEFT, fill=tk.X, expand=True)
         
         # 执行按钮 - 第二行
         button_frame2 = ttk.Frame(control_frame)
         button_frame2.pack(fill=tk.X, pady=(5, 0))
         
-        self.generate_script_btn = ttk.Button(button_frame2, text="📝 生成脚本文件", 
+        self.generate_script_btn = ttk.Button(button_frame2, text="📝 生成脚本", 
                                              command=self.generate_script)
         self.generate_script_btn.pack(side=tk.LEFT, padx=(0, 5), fill=tk.X, expand=True)
         
@@ -598,27 +606,35 @@ class LightweightDCCManager:
                                   command=self.test_parameters)
         self.test_btn.pack(side=tk.LEFT, fill=tk.X, expand=True)
         
-        # DCC连接控制 - 使用两行布局避免按钮被裁切
-        dcc_frame = ttk.Frame(control_frame)
-        dcc_frame.pack(fill=tk.X, pady=(10, 0))
+        # DCC连接控制
+        dcc_frame = ttk.LabelFrame(exec_scroll_frame, text="DCC连接", padding="10")
+        dcc_frame.pack(fill=tk.X, pady=(0, 5), padx=5)
         
-        # 第一行：下拉框和主要按钮
+        # 第一行：下拉框
         dcc_row1 = ttk.Frame(dcc_frame)
         dcc_row1.pack(fill=tk.X)
         
-        ttk.Label(dcc_row1, text="DCC连接:").pack(side=tk.LEFT)
+        ttk.Label(dcc_row1, text="目标软件:").pack(side=tk.LEFT)
         self.dcc_combo = ttk.Combobox(dcc_row1, 
                                      values=["Maya", "3ds Max", "Blender", "Unreal Engine"],
                                      state="readonly", width=15)
-        self.dcc_combo.pack(side=tk.LEFT, padx=(5, 10))
+        self.dcc_combo.pack(side=tk.LEFT, padx=(5, 0), fill=tk.X, expand=True)
         self.dcc_combo.set("选择DCC软件")
         
-        ttk.Button(dcc_row1, text="🔗连接", width=6,
-                  command=self.connect_dcc).pack(side=tk.LEFT, padx=(0, 3))
-        ttk.Button(dcc_row1, text="⚡断开", width=6,
-                  command=self.disconnect_dcc).pack(side=tk.LEFT, padx=(0, 3))
-        ttk.Button(dcc_row1, text="⚙️设置", width=6,
-                  command=self._show_dcc_settings).pack(side=tk.LEFT)
+        # 第二行：连接按钮
+        dcc_row2 = ttk.Frame(dcc_frame)
+        dcc_row2.pack(fill=tk.X, pady=(5, 0))
+        
+        ttk.Button(dcc_row2, text="🔗 连接",
+                  command=self.connect_dcc).pack(side=tk.LEFT, padx=(0, 3), fill=tk.X, expand=True)
+        ttk.Button(dcc_row2, text="⚡ 断开",
+                  command=self.disconnect_dcc).pack(side=tk.LEFT, padx=(0, 3), fill=tk.X, expand=True)
+        ttk.Button(dcc_row2, text="⚙️ 设置",
+                  command=self._show_dcc_settings).pack(side=tk.LEFT, fill=tk.X, expand=True)
+        
+        # 保存canvas引用，用于更新滚动区域
+        self.exec_canvas = exec_canvas
+        self.exec_scroll_frame = exec_scroll_frame
     
     def create_control_panel(self, parent):
         """创建底部控制面板（Git管理和日志）"""
