@@ -3472,10 +3472,11 @@ for key, value in {params}.items():
             if g["id"] == "all":
                 continue
             is_checked = g["id"] in current_groups
-            group_menu.add_checkbutton(
-                label=f"{g['icon']} {g['name']}",
-                command=lambda gid=g["id"], tid=item: self._toggle_tool_group(tid, gid),
-                variable=tk.BooleanVar(value=is_checked)
+            # 已选中的分组前面加 ✓ 标记
+            check_mark = "✓ " if is_checked else "    "
+            group_menu.add_command(
+                label=f"{check_mark}{g['icon']} {g['name']}",
+                command=lambda gid=g["id"], tid=item: self._toggle_tool_group(tid, gid)
             )
         
         menu.add_cascade(label="📂 设置分组", menu=group_menu)
