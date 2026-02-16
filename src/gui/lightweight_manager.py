@@ -585,30 +585,59 @@ class LightweightDCCManager:
         Returns:
             执行结果
         """
-        self.log_message(f"[自动化] 执行工具: {tool_id}")
+        # 使用 root.after 确保在主线程中记录日志
+        self.root.after(0, lambda: self.log_message(f"[自动化] 执行工具: {tool_id}"))
         
         # 查找工具信息
         if not hasattr(self, 'tools_cache') or tool_id not in self.tools_cache:
-            self.log_message(f"[自动化] 错误: 工具 {tool_id} 未找到")
+            self.root.after(0, lambda: self.log_message(f"[自动化] 错误: 工具 {tool_id} 未找到"))
             return {"status": "error", "message": f"工具 {tool_id} 未找到"}
         
         tool_info = self.tools_cache[tool_id]
         plugin_path = tool_info.get('path')
+        tool_name = tool_info.get('name', tool_id)
         
         if not plugin_path:
+            self.root.after(0, lambda: self.log_message(f"[自动化] 错误: 工具路径无效"))
             return {"status": "error", "message": "工具路径无效"}
         
         try:
             if mode == "standalone":
                 # 独立执行 - 复用现有的 _execute_standalone 方法
                 result = self._execute_standalone(tool_info, params or {})
+                
+                # 记录执行结果到日志
+                def log_result():
+                    self.log_message(f"[自动化] ✓ 工具 '{tool_name}' 执行完成")
+                    if isinstance(result, dict):
+                        # 输出脚本返回的结果内容
+                        output = result.get('output', '')
+                        if output:
+                            lines = output.strip().split('\n')
+                            for line in lines[:20]:  # 最多显示20行
+                                # 跳过内部标记行
+                                if line.startswith('__') and line.endswith('__'):
+                                    continue
+                                self.log_message(f"  {line}")
+                            if len(lines) > 20:
+                                self.log_message(f"  ... (共 {len(lines)} 行输出)")
+                        
+                        # 如果有 status/message 等字段也显示
+                        if 'status' in result:
+                            self.log_message(f"  状态: {result['status']}")
+                        if 'message' in result:
+                            self.log_message(f"  消息: {result['message']}")
+                
+                self.root.after(0, log_result)
                 return {"status": "success", "result": result}
             else:
                 # DCC执行 - 简化处理
+                self.root.after(0, lambda: self.log_message(f"[自动化] 自动化暂不支持DCC模式"))
                 return {"status": "error", "message": "自动化暂不支持DCC模式"}
         except Exception as e:
-            self.log_message(f"[自动化] 执行错误: {e}")
-            return {"status": "error", "message": str(e)}
+            error_msg = str(e)
+            self.root.after(0, lambda: self.log_message(f"[自动化] ✗ 执行错误: {error_msg}"))
+            return {"status": "error", "message": error_msg}
     
     def _on_automation_task_executed(self, task):
         """自动化任务执行完成回调"""

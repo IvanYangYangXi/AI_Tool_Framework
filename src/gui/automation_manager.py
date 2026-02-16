@@ -374,8 +374,9 @@ class AutomationManager:
         
         elif task.trigger_type == TriggerType.INTERVAL.value:
             config = task.interval_config or {}
-            value = config.get("value", 30)
-            unit = config.get("unit", "minutes")
+            # 兼容两种键名格式: interval_value/interval_unit 和 value/unit
+            value = config.get("interval_value", config.get("value", 30))
+            unit = config.get("interval_unit", config.get("unit", "minutes"))
             
             if unit == "seconds":
                 delta = timedelta(seconds=value)
@@ -435,17 +436,30 @@ class AutomationManager:
         while self._running:
             try:
                 now = datetime.now()
+                tasks_to_execute = []
                 
+                # 快速扫描需要执行的任务（持有锁时间短）
                 with self._lock:
-                    for task in self.tasks.values():
+                    for task in list(self.tasks.values()):
                         if not task.enabled:
                             continue
                         
                         if task.trigger_type in [TriggerType.SCHEDULED.value, TriggerType.INTERVAL.value]:
                             if task.next_run:
-                                next_run = datetime.fromisoformat(task.next_run)
-                                if now >= next_run:
-                                    self._execute_task(task)
+                                try:
+                                    next_run = datetime.fromisoformat(task.next_run)
+                                    if now >= next_run:
+                                        tasks_to_execute.append(task)
+                                except (ValueError, TypeError):
+                                    # 无效的 next_run 格式，跳过
+                                    pass
+                
+                # 在锁外执行任务（避免阻塞调度器）
+                for task in tasks_to_execute:
+                    try:
+                        self._execute_task(task)
+                    except Exception as e:
+                        logger.error(f"执行任务 {task.id} 时出错: {e}")
                 
                 # 每秒检查一次
                 time.sleep(1)
