@@ -487,17 +487,21 @@ class LightweightDCCManager:
         ttk.Button(filter_frame, text="⚙", width=2, 
                   command=self._show_group_manager).pack(side=tk.LEFT, padx=(0, 15))
         
-        # 搜索框
-        ttk.Label(filter_frame, text="搜索:").pack(side=tk.LEFT)
+        # 搜索框 - 使用容器确保X按钮不被裁切
+        search_container = ttk.Frame(filter_frame)
+        search_container.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        
+        ttk.Label(search_container, text="搜索:").pack(side=tk.LEFT)
         search_var = tk.StringVar()
-        search_entry = ttk.Entry(filter_frame, textvariable=search_var, width=15)
-        search_entry.pack(side=tk.LEFT, padx=5)
+        search_entry = ttk.Entry(search_container, textvariable=search_var, width=12)
+        search_entry.pack(side=tk.LEFT, padx=(3, 0), fill=tk.X, expand=True)
         search_var.trace_add('write', lambda *args, key=category_key: self._on_search_change(key))
         self.search_vars[category_key] = search_var
         
-        # 搜索清除按钮
-        ttk.Button(filter_frame, text="✕", width=2,
-                  command=lambda: search_var.set("")).pack(side=tk.LEFT)
+        # 搜索清除按钮 - 固定在右侧
+        clear_btn = ttk.Button(search_container, text="×", width=2,
+                              command=lambda: search_var.set(""))
+        clear_btn.pack(side=tk.LEFT, padx=(2, 0))
         
         # === 工具列表 ===
         list_frame = ttk.Frame(frame)
