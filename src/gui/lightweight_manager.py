@@ -2690,7 +2690,7 @@ finally:
         """获取当前选中的工具信息"""
         # 获取当前活动的标签页
         current_tab = self.tools_notebook.index(self.tools_notebook.select())
-        category_keys = ['maya', 'max', 'blender', 'ue']
+        category_keys = ['maya', 'max', 'blender', 'ue', 'other']
         
         if current_tab < len(category_keys):
             category_key = category_keys[current_tab]
