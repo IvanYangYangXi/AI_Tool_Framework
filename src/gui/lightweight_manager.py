@@ -772,6 +772,9 @@ class LightweightDCCManager:
                             exec_mode = execution_config.get('mode', 'standalone')
                             tool_type = 'other'
                         
+                        # 获取工具标签
+                        tags = config['plugin'].get('tags', [])
+                        
                         tool_info = {
                             'id': f"{id_prefix}{category}_{tool_dir.name}",
                             'name': config['plugin']['name'],
@@ -784,7 +787,8 @@ class LightweightDCCManager:
                             'is_local': is_local,
                             'type': tool_type,
                             'execution_mode': exec_mode,
-                            'category': category
+                            'category': category,
+                            'tags': tags  # 工具标签，用于分组筛选
                         }
                         
                         # 添加到树形视图
