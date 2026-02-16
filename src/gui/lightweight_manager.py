@@ -621,21 +621,14 @@ class LightweightDCCManager:
                   command=self._show_dcc_settings).pack(side=tk.LEFT)
     
     def create_control_panel(self, parent):
-        """创建底部控制面板（日志和Git管理）"""
+        """创建底部控制面板（Git管理和日志）"""
         # 底部区域包装框架
         bottom_frame = ttk.Frame(parent)
         parent.add(bottom_frame, weight=1)  # 日志面板占1份
         
-        # 日志区域 - 占据大部分空间
-        log_frame = ttk.LabelFrame(bottom_frame, text="操作日志", padding="5")
-        log_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 5))
-        
-        self.log_text = scrolledtext.ScrolledText(log_frame, height=8, wrap=tk.WORD)
-        self.log_text.pack(fill=tk.BOTH, expand=True)
-        
-        # Git控制 - 固定在底部
+        # Git控制 - 固定在顶部
         git_frame = ttk.LabelFrame(bottom_frame, text="Git管理", padding="5")
-        git_frame.pack(fill=tk.X, expand=False)
+        git_frame.pack(fill=tk.X, expand=False, pady=(0, 5))
         
         ttk.Button(git_frame, text="⬇️ 更新到最新版本", 
                   command=self.update_git_repo).pack(side=tk.LEFT, padx=(0, 5))
@@ -643,6 +636,13 @@ class LightweightDCCManager:
                   command=self.check_git_updates).pack(side=tk.LEFT, padx=(0, 5))
         ttk.Button(git_frame, text="📋 查看变更日志", 
                   command=self.show_changelog).pack(side=tk.LEFT)
+        
+        # 日志区域 - 占据剩余空间，放在最下面
+        log_frame = ttk.LabelFrame(bottom_frame, text="操作日志", padding="5")
+        log_frame.pack(fill=tk.BOTH, expand=True)
+        
+        self.log_text = scrolledtext.ScrolledText(log_frame, height=8, wrap=tk.WORD)
+        self.log_text.pack(fill=tk.BOTH, expand=True)
     
     def check_git_status(self):
         """检查Git仓库状态"""
