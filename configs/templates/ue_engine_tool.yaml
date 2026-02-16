@@ -1,0 +1,12 @@
+execution:
+  dependencies:
+  - unrealengine
+  entry_point: main.py::execute
+metadata:
+  author: '{{author}}'
+  created_date: '{{date}}'
+tool:
+  description: '{{description}}'
+  name: '{{tool_name}}'
+  type: ue_engine
+  version: 1.0.0

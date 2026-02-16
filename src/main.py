@@ -10,10 +10,8 @@ from pathlib import Path
 # 添加src目录到Python路径
 sys.path.insert(0, str(Path(__file__).parent))
 
-from src.core import PluginManager, DynamicLoader, ConfigManager, PermissionSystem
-from src.core.permission_system import ResourceType, PermissionLevel
-from src.ai_nlp import AIToolGenerator
-from src.requirement_analysis import RequirementAnalyzer, GuidanceSystem
+from core import PluginManager, DynamicLoader, ConfigManager, PermissionSystem
+from core.permission_system import ResourceType, PermissionLevel
 
 def setup_logging():
     """设置日志配置"""
@@ -149,112 +147,26 @@ def demo_basic_usage():
     print("=" * 50)
 
 def demo_ai_tool_generation():
-    """演示AI工具生成功能"""
+    """演示AI工具生成功能（暂未实现）"""
     print("\n" + "=" * 50)
     print("AI驱动工具生成演示")
     print("=" * 50)
     
-    print("\n1. 初始化AI工具生成器...")
-    # 使用模拟模式避免API调用
-    ai_generator = AIToolGenerator(model_provider="openai")
-    print("[OK] AI工具生成器初始化完成")
-    
-    print("\n2. 生成示例工具...")
-    
-    # 生成一个简单的工具
-    description = "创建一个文件批量重命名工具，支持添加前缀、后缀，替换特定字符"
-    
-    result = ai_generator.generate_tool_from_description(
-        description,
-        output_dir="./generated_tools"
-    )
-    
-    print(f"生成结果: {'[OK] 成功' if result.success else '[ERROR] 失败'}")
-    
-    if result.success:
-        print(f"  工具名称: {result.tool_name}")
-        print(f"  生成文件: {len(result.generated_files)} 个")
-        print(f"  配置文件: {result.config_file}")
-        print("\n  生成的文件:")
-        for file_path in result.generated_files:
-            print(f"    - {file_path}")
-        
-        print("\n  执行说明预览:")
-        instructions_preview = result.execution_instructions.split('\n')[:8]
-        for line in instructions_preview:
-            if line.strip():
-                print(f"    {line}")
-        if len(result.execution_instructions.split('\n')) > 8:
-            print("    ...")
+    print("\n[INFO] AI工具生成功能尚未实现")
+    print("该功能将在未来版本中提供")
     
     print("\n" + "=" * 50)
     print("AI工具生成功能演示完成!")
     print("=" * 50)
 
 def demo_intelligent_requirement_analysis():
-    """演示智能需求分析功能"""
+    """演示智能需求分析功能（暂未实现）"""
     print("\n" + "=" * 50)
     print("智能需求分析演示")
     print("=" * 50)
     
-    print("\n1. 初始化需求分析组件...")
-    
-    # 创建需求分析器
-    requirement_analyzer = RequirementAnalyzer(ai_provider="openai")
-    guidance_system = GuidanceSystem(requirement_analyzer)
-    
-    print("[OK] 需求分析组件初始化完成")
-    
-    # 测试静态分析
-    print("\n2. 需求质量静态分析...")
-    test_description = "做一个Maya的工具，能把模型优化一下"
-    
-    analysis_result = requirement_analyzer.analyze_requirement(test_description)
-    
-    print(f"  原始需求: {analysis_result.original_description}")
-    print(f"  质量得分: {analysis_result.quality_score:.1f}/100")
-    print(f"  质量等级: {analysis_result.quality_level.value}")
-    print(f"  缺失元素: {analysis_result.missing_elements}")
-    print(f"  模糊表述: {len(analysis_result.ambiguities)} 处")
-    print(f"  改进建议: ")
-    for i, recommendation in enumerate(analysis_result.recommendations[:3], 1):
-        print(f"    {i}. {recommendation}")
-    
-    print(f"  精炼后的需求: {analysis_result.refined_description}")
-    
-    # 测试交互式引导
-    print("\n3. 交互式需求引导演示...")
-    
-    # 开始引导流程
-    guidance_response = guidance_system.start_guidance()
-    print("  引导系统启动:")
-    # 处理可能的emoji字符
-    message = guidance_response['message']
-    if isinstance(message, str):
-        # 移除或替换emoji字符
-        import re
-        message = re.sub(r'[\U0001F600-\U0001F64F]', '[表情]', message)  # 表情符号
-        message = re.sub(r'[\U0001F300-\U0001F5FF]', '[符号]', message)  # 符号
-    print(f"  {message}")
-    
-    # 模拟几轮交互
-    test_interactions = [
-        "我想做一个Maya的网格清理工具",
-        "Maya",
-        "清理重复顶点，优化网格拓扑结构",
-        "处理OBJ和FBX格式，容差值可配置"
-    ]
-    
-    for i, user_input in enumerate(test_interactions, 1):
-        print(f"\n  第{i}轮交互:")
-        print(f"  用户输入: {user_input}")
-        
-        response = guidance_system.process_user_input(user_input)
-        print(f"  系统响应: {response['message'][:100]}...")
-        
-        if response.get('is_complete'):
-            print("  ✓ 需求引导完成")
-            break
+    print("\n[INFO] 智能需求分析功能尚未实现")
+    print("该功能将在未来版本中提供")
     
     print("\n" + "=" * 50)
     print("智能需求分析演示完成!")

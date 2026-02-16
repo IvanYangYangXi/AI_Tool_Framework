@@ -15,6 +15,17 @@ from datetime import datetime
 import tempfile
 import io
 
+# 解决相对导入问题
+if __name__ == "__main__":
+    # 直接运行时使用绝对导入
+    sys.path.insert(0, str(Path(__file__).parent.parent))
+    from gui.automation_manager import AutomationManager, TriggerType
+    from gui.automation_dialog import AutomationDialog
+else:
+    # 作为模块导入时使用相对导入
+    from .automation_manager import AutomationManager, TriggerType
+    from .automation_dialog import AutomationDialog
+
 class LightweightDCCManager:
     """
     轻量级DCC工具管理器
@@ -392,6 +403,12 @@ class LightweightDCCManager:
         self.root.geometry("1000x800")
         self.root.minsize(950, 700)
         
+        # 创建菜单栏
+        self.create_menu_bar()
+        
+        # 初始化自动化管理器
+        self._init_automation_manager()
+        
         # 创建主框架
         main_frame = ttk.Frame(self.root, padding="10")
         main_frame.pack(fill=tk.BOTH, expand=True)
@@ -408,6 +425,584 @@ class LightweightDCCManager:
         
         # 下半部分 - 日志和控制区域
         self.create_control_panel(middle_paned)
+        
+        # 绑定窗口关闭事件
+        self.root.protocol("WM_DELETE_WINDOW", self._on_close)
+    
+    def create_menu_bar(self):
+        """创建菜单栏"""
+        menubar = tk.Menu(self.root)
+        self.root.config(menu=menubar)
+        
+        # === 文件菜单 ===
+        file_menu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="文件", menu=file_menu)
+        
+        file_menu.add_command(label="🔄 刷新工具列表", command=self.refresh_tools_list)
+        file_menu.add_separator()
+        file_menu.add_command(label="📁 打开本地脚本目录", command=self._open_local_scripts_dir)
+        file_menu.add_command(label="📁 打开共享脚本目录", command=self._open_shared_scripts_dir)
+        file_menu.add_separator()
+        file_menu.add_command(label="退出", command=self._on_close)
+        
+        # === 自动化菜单 ===
+        auto_menu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="自动化", menu=auto_menu)
+        
+        auto_menu.add_command(label="⏰ 任务管理...", command=self._show_automation_dialog)
+        auto_menu.add_separator()
+        auto_menu.add_command(label="➕ 为当前工具创建定时任务", 
+                             command=self._create_scheduled_task_for_current)
+        auto_menu.add_command(label="➕ 为当前工具创建间隔任务", 
+                             command=self._create_interval_task_for_current)
+        auto_menu.add_separator()
+        
+        # 调度器控制
+        self.scheduler_running_var = tk.BooleanVar(value=True)
+        auto_menu.add_checkbutton(label="启用自动化调度", variable=self.scheduler_running_var,
+                                 command=self._toggle_scheduler)
+        
+        # === 工具菜单 ===
+        tools_menu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="工具", menu=tools_menu)
+        
+        tools_menu.add_command(label="⚙ 设置...", command=self._show_general_settings_dialog)
+        tools_menu.add_command(label="🏷 分组管理...", command=self._show_group_manager)
+        tools_menu.add_separator()
+        tools_menu.add_command(label="📜 查看日志文件", command=self._open_log_file)
+        
+        # === Git菜单 ===
+        git_menu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="Git", menu=git_menu)
+        
+        git_menu.add_command(label="🔍 检查更新", command=self.check_git_status)
+        git_menu.add_command(label="⬇ 拉取更新", command=self.update_git_repo)
+        git_menu.add_separator()
+        git_menu.add_command(label="📝 提交更改...", command=self._show_git_commit_dialog)
+        git_menu.add_command(label="⬆ 推送到远程", command=self._git_push_changes)
+        
+        # === 帮助菜单 ===
+        help_menu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="帮助", menu=help_menu)
+        
+        help_menu.add_command(label="📖 使用说明", command=self._show_help)
+        help_menu.add_command(label="ℹ 关于", command=self._show_about)
+    
+    def _init_automation_manager(self):
+        """初始化自动化管理器"""
+        config_dir = self._get_documents_base_dir() / "config"
+        
+        self.automation_manager = AutomationManager(
+            config_dir=config_dir,
+            execute_callback=self._execute_tool_for_automation
+        )
+        
+        # 设置回调
+        self.automation_manager.on_task_executed = self._on_automation_task_executed
+        
+        # 启动调度器
+        self.automation_manager.start()
+        
+        self.automation_dialog = None
+    
+    def _execute_tool_for_automation(self, tool_id: str, category: str, 
+                                     mode: str, params: dict) -> dict:
+        """
+        自动化任务执行工具的回调函数
+        
+        Args:
+            tool_id: 工具ID
+            category: 工具分类
+            mode: 执行模式 (standalone/dcc)
+            params: 工具参数
+        
+        Returns:
+            执行结果
+        """
+        self.log_message(f"[自动化] 执行工具: {tool_id}")
+        
+        # 查找工具信息
+        if not hasattr(self, 'tools_cache') or tool_id not in self.tools_cache:
+            self.log_message(f"[自动化] 错误: 工具 {tool_id} 未找到")
+            return {"status": "error", "message": f"工具 {tool_id} 未找到"}
+        
+        tool_info = self.tools_cache[tool_id]
+        plugin_path = tool_info.get('path')
+        
+        if not plugin_path:
+            return {"status": "error", "message": "工具路径无效"}
+        
+        try:
+            if mode == "standalone":
+                # 独立执行 - 复用现有的 _execute_standalone 方法
+                result = self._execute_standalone(tool_info, params or {})
+                return {"status": "success", "result": result}
+            else:
+                # DCC执行 - 简化处理
+                return {"status": "error", "message": "自动化暂不支持DCC模式"}
+        except Exception as e:
+            self.log_message(f"[自动化] 执行错误: {e}")
+            return {"status": "error", "message": str(e)}
+    
+    def _on_automation_task_executed(self, task):
+        """自动化任务执行完成回调"""
+        self.root.after(0, lambda: self.log_message(
+            f"[自动化] 任务 '{task.name}' 执行完成，状态: {task.status}"
+        ))
+    
+    def _show_automation_dialog(self):
+        """显示自动化任务管理对话框"""
+        if not hasattr(self, 'tools_cache'):
+            self.tools_cache = {}
+        
+        dialog = AutomationDialog(
+            parent=self.root,
+            automation_manager=self.automation_manager,
+            tools_cache=self.tools_cache,
+            get_tool_callback=self._get_current_tool_info
+        )
+        dialog.show()
+    
+    def _get_current_tool_info(self) -> dict:
+        """获取当前选中工具的信息"""
+        tool_info = self._get_selected_tool()
+        if not tool_info:
+            return None
+        
+        # tool_info 是字典格式
+        return {
+            'id': tool_info.get('id', ''),
+            'name': tool_info.get('name', ''),
+            'category': tool_info.get('category', ''),
+            'path': tool_info.get('path', ''),
+            'type': tool_info.get('type', 'dcc'),
+            'execution_mode': tool_info.get('execution_mode', 'standalone')
+        }
+    
+    def _create_scheduled_task_for_current(self):
+        """为当前工具创建定时任务"""
+        tool_info = self._get_current_tool_info()
+        if not tool_info:
+            messagebox.showwarning("提示", "请先选择一个工具")
+            return
+        
+        # 简单对话框询问时间
+        dialog = tk.Toplevel(self.root)
+        dialog.title("创建定时任务")
+        dialog.geometry("300x150")
+        dialog.transient(self.root)
+        dialog.grab_set()
+        
+        frame = ttk.Frame(dialog, padding="15")
+        frame.pack(fill=tk.BOTH, expand=True)
+        
+        ttk.Label(frame, text=f"工具: {tool_info['name']}").pack(anchor=tk.W)
+        
+        time_frame = ttk.Frame(frame)
+        time_frame.pack(fill=tk.X, pady=10)
+        
+        ttk.Label(time_frame, text="执行时间:").pack(side=tk.LEFT)
+        hour_var = tk.StringVar(value="09")
+        ttk.Spinbox(time_frame, from_=0, to=23, width=3, textvariable=hour_var).pack(side=tk.LEFT, padx=5)
+        ttk.Label(time_frame, text=":").pack(side=tk.LEFT)
+        minute_var = tk.StringVar(value="00")
+        ttk.Spinbox(time_frame, from_=0, to=59, width=3, textvariable=minute_var).pack(side=tk.LEFT, padx=5)
+        
+        def create():
+            time_str = f"{hour_var.get().zfill(2)}:{minute_var.get().zfill(2)}"
+            self.automation_manager.create_task(
+                name=f"定时执行 - {tool_info['name']}",
+                trigger_type=TriggerType.SCHEDULED,
+                tool_id=tool_info['id'],
+                tool_category=tool_info['category'],
+                execution_mode="standalone",
+                trigger_config={"time": time_str, "days": ["everyday"]}
+            )
+            messagebox.showinfo("成功", f"已创建定时任务，将在每天 {time_str} 执行")
+            dialog.destroy()
+        
+        ttk.Button(frame, text="创建", command=create).pack(side=tk.RIGHT)
+        ttk.Button(frame, text="取消", command=dialog.destroy).pack(side=tk.RIGHT, padx=5)
+    
+    def _create_interval_task_for_current(self):
+        """为当前工具创建间隔任务"""
+        tool_info = self._get_current_tool_info()
+        if not tool_info:
+            messagebox.showwarning("提示", "请先选择一个工具")
+            return
+        
+        # 简单对话框询问间隔
+        dialog = tk.Toplevel(self.root)
+        dialog.title("创建间隔任务")
+        dialog.geometry("350x150")
+        dialog.transient(self.root)
+        dialog.grab_set()
+        
+        frame = ttk.Frame(dialog, padding="15")
+        frame.pack(fill=tk.BOTH, expand=True)
+        
+        ttk.Label(frame, text=f"工具: {tool_info['name']}").pack(anchor=tk.W)
+        
+        interval_frame = ttk.Frame(frame)
+        interval_frame.pack(fill=tk.X, pady=10)
+        
+        ttk.Label(interval_frame, text="每隔").pack(side=tk.LEFT)
+        value_var = tk.StringVar(value="30")
+        ttk.Entry(interval_frame, textvariable=value_var, width=6).pack(side=tk.LEFT, padx=5)
+        unit_var = tk.StringVar(value="minutes")
+        ttk.Combobox(interval_frame, textvariable=unit_var, 
+                    values=["seconds", "minutes", "hours"],
+                    state="readonly", width=10).pack(side=tk.LEFT, padx=5)
+        ttk.Label(interval_frame, text="执行一次").pack(side=tk.LEFT)
+        
+        def create():
+            try:
+                val = int(value_var.get())
+            except ValueError:
+                messagebox.showwarning("提示", "请输入有效的数字")
+                return
+            
+            unit = unit_var.get()
+            unit_text = {"seconds": "秒", "minutes": "分钟", "hours": "小时"}.get(unit, "分钟")
+            
+            self.automation_manager.create_task(
+                name=f"间隔执行 - {tool_info['name']}",
+                trigger_type=TriggerType.INTERVAL,
+                tool_id=tool_info['id'],
+                tool_category=tool_info['category'],
+                execution_mode="standalone",
+                trigger_config={"value": val, "unit": unit}
+            )
+            messagebox.showinfo("成功", f"已创建间隔任务，将每 {val} {unit_text}执行一次")
+            dialog.destroy()
+        
+        ttk.Button(frame, text="创建", command=create).pack(side=tk.RIGHT)
+        ttk.Button(frame, text="取消", command=dialog.destroy).pack(side=tk.RIGHT, padx=5)
+    
+    def _toggle_scheduler(self):
+        """切换调度器状态"""
+        if self.scheduler_running_var.get():
+            self.automation_manager.start()
+            self.log_message("自动化调度器已启动")
+        else:
+            self.automation_manager.stop()
+            self.log_message("自动化调度器已停止")
+    
+    def _on_close(self):
+        """窗口关闭事件"""
+        # 检查是否有活动的自动化任务
+        active_tasks = [t for t in self.automation_manager.get_all_tasks() if t.enabled]
+        
+        if active_tasks:
+            result = messagebox.askyesnocancel(
+                "关闭确认",
+                f"当前有 {len(active_tasks)} 个活动的自动化任务。\n\n"
+                "• 点击【是】- 最小化到系统托盘，任务继续运行\n"
+                "• 点击【否】- 直接退出，任务将停止\n"
+                "• 点击【取消】- 返回程序",
+                icon='question'
+            )
+            
+            if result is None:  # 取消
+                return
+            elif result:  # 是 - 最小化
+                self._minimize_to_tray()
+                return
+            else:  # 否 - 退出
+                pass
+        
+        # 停止调度器
+        self.automation_manager.stop()
+        
+        # 保存窗口位置
+        self.local_settings["window_geometry"] = self.root.geometry()
+        self._save_local_settings()
+        
+        self.root.destroy()
+    
+    def _minimize_to_tray(self):
+        """最小化到系统托盘"""
+        try:
+            # 尝试使用pystray（需要安装）
+            import pystray
+            from PIL import Image
+            
+            # 创建托盘图标
+            def create_image():
+                # 创建一个简单的图标
+                img = Image.new('RGB', (64, 64), color='#4a90d9')
+                return img
+            
+            def on_show(icon, item):
+                icon.stop()
+                self.root.after(0, self.root.deiconify)
+            
+            def on_quit(icon, item):
+                icon.stop()
+                self.automation_manager.stop()
+                self.root.after(0, self.root.destroy)
+            
+            menu = pystray.Menu(
+                pystray.MenuItem("显示窗口", on_show, default=True),
+                pystray.MenuItem("退出", on_quit)
+            )
+            
+            icon = pystray.Icon("DCC工具管理器", create_image(), "DCC工具管理器", menu)
+            
+            self.root.withdraw()
+            self.log_message("已最小化到系统托盘，自动化任务继续运行")
+            
+            # 在新线程中运行托盘图标
+            threading.Thread(target=icon.run, daemon=True).start()
+            
+        except ImportError:
+            # pystray未安装，直接最小化窗口
+            self.root.iconify()
+            self.log_message("已最小化窗口（安装 pystray 和 PIL 可启用系统托盘功能）")
+    
+    def _open_local_scripts_dir(self):
+        """打开本地脚本目录"""
+        path = self._get_documents_base_dir() / "local_scripts"
+        path.mkdir(parents=True, exist_ok=True)
+        os.startfile(str(path))
+    
+    def _open_shared_scripts_dir(self):
+        """打开共享脚本目录"""
+        path = self.git_repo_path / "src" / "plugins"
+        if path.exists():
+            os.startfile(str(path))
+        else:
+            messagebox.showwarning("提示", f"目录不存在: {path}")
+    
+    def _open_log_file(self):
+        """打开日志文件"""
+        log_path = self._get_documents_base_dir() / "logs"
+        log_path.mkdir(parents=True, exist_ok=True)
+        os.startfile(str(log_path))
+    
+    def _show_help(self):
+        """显示帮助"""
+        help_text = """
+DCC工具管理器 使用说明
+
+【工具管理】
+• 左侧面板显示可用工具，按DCC软件分类
+• 双击工具可快速执行
+• 右键点击工具可设置分组
+
+【自动化功能】
+• 菜单 -> 自动化 -> 任务管理 打开自动化管理界面
+• 支持定时执行、间隔执行、文件监控、任务链
+• 关闭窗口时可选择最小化到托盘继续运行
+
+【Git同步】
+• 启动时自动检查更新
+• 可通过Git菜单手动拉取/推送更改
+
+【快捷键】
+• F5: 刷新工具列表
+"""
+        messagebox.showinfo("使用说明", help_text.strip())
+    
+    def _show_about(self):
+        """显示关于对话框"""
+        about_text = """
+DCC工具管理器 v1.0.0
+
+一个用于管理DCC软件工具的轻量级应用。
+
+功能特点:
+• 统一管理Maya/Max/Blender/UE工具
+• 支持独立执行和DCC内执行
+• 自动化任务调度
+• Git版本控制集成
+
+© 2024 AI Tool Framework
+"""
+        messagebox.showinfo("关于", about_text.strip())
+    
+    def _show_general_settings_dialog(self):
+        """显示通用设置对话框"""
+        dialog = tk.Toplevel(self.root)
+        dialog.title("⚙ 设置")
+        dialog.geometry("450x350")
+        dialog.resizable(False, False)
+        dialog.transient(self.root)
+        dialog.grab_set()
+        
+        notebook = ttk.Notebook(dialog)
+        notebook.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        
+        # === DCC 连接设置 ===
+        dcc_frame = ttk.Frame(notebook, padding="10")
+        notebook.add(dcc_frame, text="DCC连接")
+        
+        ttk.Label(dcc_frame, text="Maya 端口:").grid(row=0, column=0, sticky=tk.W, pady=5)
+        maya_port_var = tk.StringVar(value=str(self.local_settings.get("maya_port", 7001)))
+        ttk.Entry(dcc_frame, textvariable=maya_port_var, width=10).grid(row=0, column=1, sticky=tk.W, pady=5)
+        
+        ttk.Label(dcc_frame, text="3ds Max 端口:").grid(row=1, column=0, sticky=tk.W, pady=5)
+        max_port_var = tk.StringVar(value=str(self.local_settings.get("max_port", 9001)))
+        ttk.Entry(dcc_frame, textvariable=max_port_var, width=10).grid(row=1, column=1, sticky=tk.W, pady=5)
+        
+        ttk.Label(dcc_frame, text="Blender 端口:").grid(row=2, column=0, sticky=tk.W, pady=5)
+        blender_port_var = tk.StringVar(value=str(self.local_settings.get("blender_port", 8001)))
+        ttk.Entry(dcc_frame, textvariable=blender_port_var, width=10).grid(row=2, column=1, sticky=tk.W, pady=5)
+        
+        # === 自动化设置 ===
+        auto_frame = ttk.Frame(notebook, padding="10")
+        notebook.add(auto_frame, text="自动化")
+        
+        startup_var = tk.BooleanVar(value=self.local_settings.get("auto_start_scheduler", True))
+        ttk.Checkbutton(auto_frame, text="启动时自动开始调度器", 
+                       variable=startup_var).pack(anchor=tk.W, pady=5)
+        
+        minimize_var = tk.BooleanVar(value=self.local_settings.get("minimize_to_tray", True))
+        ttk.Checkbutton(auto_frame, text="关闭时提示最小化到托盘", 
+                       variable=minimize_var).pack(anchor=tk.W, pady=5)
+        
+        # === 界面设置 ===
+        ui_frame = ttk.Frame(notebook, padding="10")
+        notebook.add(ui_frame, text="界面")
+        
+        ttk.Label(ui_frame, text="工具列表每页显示:").pack(anchor=tk.W, pady=5)
+        page_size_var = tk.StringVar(value=str(self.local_settings.get("page_size", 50)))
+        ttk.Combobox(ui_frame, textvariable=page_size_var, 
+                    values=["20", "50", "100", "200"],
+                    state="readonly", width=10).pack(anchor=tk.W)
+        
+        # 保存按钮
+        def save_settings():
+            try:
+                self.local_settings["maya_port"] = int(maya_port_var.get())
+                self.local_settings["max_port"] = int(max_port_var.get())
+                self.local_settings["blender_port"] = int(blender_port_var.get())
+                self.local_settings["auto_start_scheduler"] = startup_var.get()
+                self.local_settings["minimize_to_tray"] = minimize_var.get()
+                self.local_settings["page_size"] = int(page_size_var.get())
+                self._save_local_settings()
+                messagebox.showinfo("提示", "设置已保存")
+                dialog.destroy()
+            except ValueError as e:
+                messagebox.showwarning("提示", f"请输入有效的数值: {e}")
+        
+        btn_frame = ttk.Frame(dialog)
+        btn_frame.pack(fill=tk.X, padx=10, pady=10)
+        ttk.Button(btn_frame, text="取消", command=dialog.destroy).pack(side=tk.RIGHT, padx=5)
+        ttk.Button(btn_frame, text="保存", command=save_settings).pack(side=tk.RIGHT)
+    
+    def _show_git_commit_dialog(self):
+        """显示Git提交对话框"""
+        dialog = tk.Toplevel(self.root)
+        dialog.title("📝 Git 提交")
+        dialog.geometry("500x400")
+        dialog.transient(self.root)
+        dialog.grab_set()
+        
+        main_frame = ttk.Frame(dialog, padding="10")
+        main_frame.pack(fill=tk.BOTH, expand=True)
+        
+        # 变更文件列表
+        ttk.Label(main_frame, text="变更的文件:").pack(anchor=tk.W)
+        
+        files_frame = ttk.Frame(main_frame)
+        files_frame.pack(fill=tk.BOTH, expand=True, pady=5)
+        
+        files_text = tk.Text(files_frame, height=10, wrap=tk.NONE)
+        files_scroll = ttk.Scrollbar(files_frame, orient=tk.VERTICAL, command=files_text.yview)
+        files_text.configure(yscrollcommand=files_scroll.set)
+        files_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        files_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        # 获取变更文件
+        try:
+            result = subprocess.run(
+                ["git", "status", "--porcelain"],
+                cwd=self.git_repo_path,
+                capture_output=True,
+                text=True
+            )
+            if result.returncode == 0:
+                files_text.insert('1.0', result.stdout or "没有变更的文件")
+            else:
+                files_text.insert('1.0', f"获取失败: {result.stderr}")
+        except Exception as e:
+            files_text.insert('1.0', f"错误: {e}")
+        
+        files_text.configure(state='disabled')
+        
+        # 提交信息
+        ttk.Label(main_frame, text="提交信息:").pack(anchor=tk.W, pady=(10, 0))
+        commit_msg_var = tk.StringVar()
+        commit_entry = ttk.Entry(main_frame, textvariable=commit_msg_var)
+        commit_entry.pack(fill=tk.X, pady=5)
+        commit_entry.focus_set()
+        
+        # 按钮
+        def do_commit():
+            msg = commit_msg_var.get().strip()
+            if not msg:
+                messagebox.showwarning("提示", "请输入提交信息")
+                return
+            
+            try:
+                # git add -A
+                subprocess.run(
+                    ["git", "add", "-A"],
+                    cwd=self.git_repo_path,
+                    check=True
+                )
+                
+                # git commit
+                result = subprocess.run(
+                    ["git", "commit", "-m", msg],
+                    cwd=self.git_repo_path,
+                    capture_output=True,
+                    text=True
+                )
+                
+                if result.returncode == 0:
+                    messagebox.showinfo("成功", "提交成功！")
+                    self.log_message(f"Git 提交成功: {msg}")
+                    dialog.destroy()
+                else:
+                    messagebox.showwarning("提示", result.stdout or result.stderr or "没有可提交的内容")
+                    
+            except Exception as e:
+                messagebox.showerror("错误", f"提交失败: {e}")
+        
+        btn_frame = ttk.Frame(main_frame)
+        btn_frame.pack(fill=tk.X, pady=10)
+        ttk.Button(btn_frame, text="取消", command=dialog.destroy).pack(side=tk.RIGHT, padx=5)
+        ttk.Button(btn_frame, text="提交", command=do_commit).pack(side=tk.RIGHT)
+    
+    def _git_push_changes(self):
+        """推送更改到远程仓库"""
+        if messagebox.askyesno("确认", "确定要推送更改到远程仓库吗？"):
+            def push_thread():
+                try:
+                    result = subprocess.run(
+                        ["git", "push"],
+                        cwd=self.git_repo_path,
+                        capture_output=True,
+                        text=True,
+                        timeout=60
+                    )
+                    
+                    if result.returncode == 0:
+                        self.root.after(0, lambda: messagebox.showinfo("成功", "推送成功！"))
+                        self.root.after(0, lambda: self.log_message("Git 推送成功"))
+                    else:
+                        error = result.stderr or result.stdout or "推送失败"
+                        self.root.after(0, lambda: messagebox.showerror("错误", error))
+                        
+                except subprocess.TimeoutExpired:
+                    self.root.after(0, lambda: messagebox.showerror("错误", "推送超时"))
+                except Exception as e:
+                    self.root.after(0, lambda: messagebox.showerror("错误", f"推送失败: {e}"))
+            
+            threading.Thread(target=push_thread, daemon=True).start()
+            self.log_message("正在推送到远程仓库...")
     
     def create_status_bar(self, parent):
         """创建状态栏"""
@@ -3313,6 +3908,11 @@ for key, value in {params}.items():
             message: 日志消息
             level: 日志级别 - "info"(默认), "success", "warning", "error", "debug", "maya"
         """
+        # 如果log_text还未初始化，只打印到控制台
+        if not hasattr(self, 'log_text') or self.log_text is None:
+            print(f"[{datetime.now().strftime('%H:%M:%S')}] {message}")
+            return
+            
         timestamp = datetime.now().strftime("%H:%M:%S")
         log_entry = f"[{timestamp}] {message}\n"
         
