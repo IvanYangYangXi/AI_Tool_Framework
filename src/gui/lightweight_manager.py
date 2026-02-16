@@ -389,21 +389,25 @@ class LightweightDCCManager:
     def setup_ui(self):
         """设置轻量级用户界面"""
         self.root.title("🎨 DCC工具管理器 - 轻量版")
-        self.root.geometry("950x700")
-        self.root.minsize(900, 600)
+        self.root.geometry("1000x800")
+        self.root.minsize(950, 700)
         
         # 创建主框架
         main_frame = ttk.Frame(self.root, padding="10")
         main_frame.pack(fill=tk.BOTH, expand=True)
         
-        # 顶部状态栏
+        # 顶部状态栏 - 固定高度
         self.create_status_bar(main_frame)
         
-        # 主要功能区域
-        self.create_main_panels(main_frame)
+        # 中间区域使用 PanedWindow 分割工具面板和日志面板
+        middle_paned = ttk.PanedWindow(main_frame, orient=tk.VERTICAL)
+        middle_paned.pack(fill=tk.BOTH, expand=True)
         
-        # 底部控制区域
-        self.create_control_panel(main_frame)
+        # 上半部分 - 主要功能区域（工具列表+参数面板）
+        self.create_main_panels(middle_paned)
+        
+        # 下半部分 - 日志和控制区域
+        self.create_control_panel(middle_paned)
     
     def create_status_bar(self, parent):
         """创建状态栏"""
@@ -426,8 +430,12 @@ class LightweightDCCManager:
     
     def create_main_panels(self, parent):
         """创建主要面板"""
-        # 使用PanedWindow分割界面
-        paned_window = ttk.PanedWindow(parent, orient=tk.HORIZONTAL)
+        # 创建包装框架
+        main_tools_frame = ttk.Frame(parent)
+        parent.add(main_tools_frame, weight=3)  # 工具面板占3份
+        
+        # 使用PanedWindow分割左右界面
+        paned_window = ttk.PanedWindow(main_tools_frame, orient=tk.HORIZONTAL)
         paned_window.pack(fill=tk.BOTH, expand=True)
         
         # 左侧面板 - 工具列表
@@ -613,13 +621,21 @@ class LightweightDCCManager:
                   command=self._show_dcc_settings).pack(side=tk.LEFT)
     
     def create_control_panel(self, parent):
-        """创建底部控制面板"""
-        control_frame = ttk.Frame(parent)
-        control_frame.pack(fill=tk.X, pady=(10, 0))
+        """创建底部控制面板（日志和Git管理）"""
+        # 底部区域包装框架
+        bottom_frame = ttk.Frame(parent)
+        parent.add(bottom_frame, weight=1)  # 日志面板占1份
         
-        # Git控制
-        git_frame = ttk.LabelFrame(control_frame, text="Git管理", padding="5")
-        git_frame.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 10))
+        # 日志区域 - 占据大部分空间
+        log_frame = ttk.LabelFrame(bottom_frame, text="操作日志", padding="5")
+        log_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 5))
+        
+        self.log_text = scrolledtext.ScrolledText(log_frame, height=8, wrap=tk.WORD)
+        self.log_text.pack(fill=tk.BOTH, expand=True)
+        
+        # Git控制 - 固定在底部
+        git_frame = ttk.LabelFrame(bottom_frame, text="Git管理", padding="5")
+        git_frame.pack(fill=tk.X, expand=False)
         
         ttk.Button(git_frame, text="⬇️ 更新到最新版本", 
                   command=self.update_git_repo).pack(side=tk.LEFT, padx=(0, 5))
@@ -627,13 +643,6 @@ class LightweightDCCManager:
                   command=self.check_git_updates).pack(side=tk.LEFT, padx=(0, 5))
         ttk.Button(git_frame, text="📋 查看变更日志", 
                   command=self.show_changelog).pack(side=tk.LEFT)
-        
-        # 日志区域
-        log_frame = ttk.LabelFrame(control_frame, text="操作日志", padding="5")
-        log_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
-        
-        self.log_text = scrolledtext.ScrolledText(log_frame, height=8, wrap=tk.WORD)
-        self.log_text.pack(fill=tk.BOTH, expand=True)
     
     def check_git_status(self):
         """检查Git仓库状态"""
@@ -2858,13 +2867,20 @@ if result:
         if isinstance(result, dict):
             output = result.get('output', '')
             if output:
-                # 显示前几行输出
+                # 显示完整输出（过滤内部标记行）
                 lines = output.strip().split('\n')
-                for line in lines[:10]:
-                    if line.strip() and not line.startswith('__'):
+                max_display = 100  # 最多显示100行
+                displayed = 0
+                for line in lines:
+                    # 跳过内部标记行
+                    if line.startswith('__') and line.endswith('__'):
+                        continue
+                    if displayed < max_display:
                         self.log_message(f"  {line}")
-                if len(lines) > 10:
-                    self.log_message(f"  ... (共 {len(lines)} 行输出)")
+                        displayed += 1
+                
+                if len(lines) > max_display:
+                    self.log_message(f"  ... (共 {len(lines)} 行输出，已显示 {max_display} 行)")
     
     def _on_standalone_failed(self, error):
         """独立执行失败"""
