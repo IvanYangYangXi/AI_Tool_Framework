@@ -175,3 +175,6 @@ htmlcov/
 configs/local_settings.json
 local_settings.json
 *.local.json
+
+# GUI Testing Directory (DO NOT COMMIT - Contains local test data, logs, and screenshots)
+debug_tests/
